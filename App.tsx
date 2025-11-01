@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment } from './types';
 import PDVHeader from './components/PDVHeader';
@@ -11,6 +11,9 @@ import ShortcutHelper from './components/ShortcutHelper';
 import OpenShiftModal from './components/OpenShiftModal';
 import CloseShiftModal from './components/CloseShiftModal';
 import ShiftMovementModal from './components/ShiftMovementModal';
+import CustomerSearchModal from './components/CustomerSearchModal';
+import DiscountModal from './components/DiscountModal';
+
 
 import * as productApi from './api/products';
 import * as customerApi from './api/customers';
@@ -20,16 +23,19 @@ import * as syncApi from './api/sync';
 import * as inventoryApi from './api/inventory';
 import * as nfeProcessor from './api/nfeProcessor';
 import * as userApi from './api/users';
+import * as authApi from './api/auth';
 import { getFinancials } from './api/financials';
 import * as cashRegisterApi from './api/cashRegister';
 
 
 type AppView = 'pdv' | 'erp';
 type ShiftModal = 'close' | 'movement' | null;
+type DiscountTarget = { type: 'total' } | { type: 'item'; itemId: string };
 
 const App: React.FC = () => {
   // Global State
   const [currentView, setCurrentView] = useState<AppView>('pdv');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   // ERP Data State
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,6 +52,12 @@ const App: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  // Modals State
+  const [isCustomerSearchModalOpen, setCustomerSearchModalOpen] = useState(false);
+  const [isDiscountModalOpen, setDiscountModalOpen] = useState(false);
+  const [discountTarget, setDiscountTarget] = useState<DiscountTarget | null>(null);
 
   // Shift State
   const [currentShift, setCurrentShift] = useState<CashShift | null>(null);
@@ -97,44 +109,29 @@ const App: React.FC = () => {
   }, []);
 
 
-  // --- DATA FETCHING ---
+  // --- DATA FETCHING & AUTH ---
   useEffect(() => {
     const loadInitialData = async () => {
-      // First, check for an active shift
+      // Simulate user login
+      // Change to 'user-2' to test 'Caixa' role permissions
+      const user = await authApi.getCurrentUser('user-1');
+      setCurrentUser(user);
+
       const activeShift = await cashRegisterApi.getCurrentShift();
       setCurrentShift(activeShift);
-      if (!activeShift) {
-        setShiftOpenModalVisible(true);
-      }
+      if (!activeShift) setShiftOpenModalVisible(true);
 
-      const [
-        prods, custs, supps,
-        queuedSales, history, userList, 
-        financialData, sLevels, sMovements,
-        shifts
-      ] = await Promise.all([
-        productApi.getProducts(),
-        customerApi.getCustomers(),
-        supplierApi.getSuppliers(),
-        syncApi.getQueuedSales(),
-        syncApi.getSalesHistory(),
-        userApi.getUsers(),
-        getFinancials(),
-        inventoryApi.getStockLevels(),
-        inventoryApi.getStockMovements(),
+      const [ prods, custs, supps, queuedSales, history, userList, financialData, sLevels, sMovements, shifts ] = await Promise.all([
+        productApi.getProducts(), customerApi.getCustomers(), supplierApi.getSuppliers(),
+        syncApi.getQueuedSales(), syncApi.getSalesHistory(), userApi.getUsers(),
+        getFinancials(), inventoryApi.getStockLevels(), inventoryApi.getStockMovements(),
         cashRegisterApi.getShiftHistory()
       ]);
 
-      setProducts(prods);
-      setCustomers(custs);
-      setSuppliers(supps);
-      setPendingSalesCount(queuedSales.length);
-      setSalesHistory(history);
-      setUsers(userList);
-      setFinancials(financialData);
-      setStockLevels(sLevels);
-      setStockMovements(sMovements);
-      setShiftHistory(shifts);
+      setProducts(prods); setCustomers(custs); setSuppliers(supps);
+      setPendingSalesCount(queuedSales.length); setSalesHistory(history);
+      setUsers(userList); setFinancials(financialData); setStockLevels(sLevels);
+      setStockMovements(sMovements); setShiftHistory(shifts);
     };
     loadInitialData();
   }, []);
@@ -149,20 +146,13 @@ const App: React.FC = () => {
       const { syncedIds } = await syncApi.synchronizeSales(queuedSales);
       syncApi.clearSyncedSales(syncedIds);
       setPendingSalesCount(syncApi.getQueuedSales().length);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : 'Erro de sincronização.');
-    } finally {
-      setIsSyncing(false);
-    }
+    } catch (error) { console.error(error instanceof Error ? error.message : 'Erro de sincronização.');
+    } finally { setIsSyncing(false); }
   }, [isSyncing, isOnline]);
 
-  useEffect(() => {
-    if (isOnline) {
-      handleSync();
-    }
-  }, [isOnline, handleSync]);
+  useEffect(() => { if (isOnline) handleSync(); }, [isOnline, handleSync]);
 
-  // --- PDV CART LOGIC ---
+  // --- PDV CART & DISCOUNT LOGIC ---
   const handleAddToCart = useCallback((product: Product) => {
     if (!currentShift) return;
     setCart(prevCart => {
@@ -187,28 +177,89 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const handleClearCart = useCallback(() => setCart([]), []);
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const handleClearCart = useCallback(() => {
+    setCart([]);
+    setSelectedCustomer(null);
+  }, []);
+
+  const handleOpenDiscountModal = useCallback((target: DiscountTarget) => {
+      setDiscountTarget(target);
+      setDiscountModalOpen(true);
+  }, []);
+
+  const handleApplyDiscount = useCallback((amount: number, type: 'fixed' | 'percentage') => {
+      if (!discountTarget) return;
+
+      const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+      if (discountTarget.type === 'item') {
+          setCart(prevCart => prevCart.map(item => {
+              if (item.id === discountTarget.itemId) {
+                  return { ...item, discount: { amount, type } };
+              }
+              return item;
+          }));
+      } else { // 'total'
+          if (subtotal === 0) return;
+          const totalDiscountValue = type === 'fixed' ? amount : subtotal * (amount / 100);
+          setCart(prevCart => prevCart.map(item => {
+              const itemTotal = item.price * item.quantity;
+              const proportionalDiscount = (itemTotal / subtotal) * totalDiscountValue;
+              return { ...item, discount: { amount: proportionalDiscount, type: 'fixed' } };
+          }));
+      }
+      setDiscountModalOpen(false);
+      setDiscountTarget(null);
+  }, [cart, discountTarget]);
+
+
+  const { subtotal, totalDiscount, total } = useMemo(() => {
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const totalDiscount = cart.reduce((sum, item) => {
+      if (!item.discount) return sum;
+      if (item.discount.type === 'fixed') {
+        return sum + item.discount.amount;
+      }
+      // percentage
+      const itemTotal = item.price * item.quantity;
+      return sum + (itemTotal * (item.discount.amount / 100));
+    }, 0);
+    const total = subtotal - totalDiscount;
+    return { subtotal, totalDiscount, total };
+  }, [cart]);
+
 
   // --- PDV TRANSACTION LOGIC ---
   const handleOpenPaymentModal = () => {
-    if (cart.length > 0 && currentShift) {
-      setPaymentModalOpen(true);
-    }
+    if (cart.length > 0 && currentShift) setPaymentModalOpen(true);
   };
 
   const handleFinalizeSale = useCallback(async (payments: Payment[], changeGiven: number) => {
     try {
-        const signedXml = await generateAndSignNfce(cart, total, payments);
+        const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscount);
+
+        let pointsEarned = 0;
+        if (selectedCustomer) {
+            pointsEarned = Math.floor(total / 10); // 1 point for every R$10
+            if (pointsEarned > 0) {
+                const updatedCustomer = await customerApi.updateCustomerPoints(selectedCustomer.id, pointsEarned);
+                setSelectedCustomer(updatedCustomer); // Refresh customer data in UI
+                refreshCustomers();
+            }
+        }
 
         const saleRecord: SaleRecord = {
             id: uuidv4(),
             timestamp: new Date().toISOString(),
             items: cart,
-            total: total,
+            total,
             payments,
             changeGiven,
             nfceXml: signedXml,
+            customerId: selectedCustomer?.id,
+            customerName: selectedCustomer?.name,
+            totalDiscount,
+            loyaltyPointsEarned: pointsEarned,
         };
 
         syncApi.recordSale(saleRecord, isOnline);
@@ -219,136 +270,104 @@ const App: React.FC = () => {
         setSalesHistory(prev => [...prev, saleRecord]); // Optimistic update
         await refreshInventoryData();
 
-        if (isOnline) {
-            handleSync();
-        }
+        if (isOnline) handleSync();
         handleClearCart();
         setPaymentModalOpen(false);
 
     } catch (error) {
         console.error("Failed to finalize sale:", error);
-        // Here you could show an error message to the user
     }
-  }, [cart, total, isOnline, handleSync, handleClearCart, refreshInventoryData]);
+  }, [cart, total, subtotal, totalDiscount, isOnline, handleSync, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers]);
 
   // --- SHIFT LOGIC ---
   const handleOpenShift = useCallback(async (openingBalance: number) => {
-    const newShift = await cashRegisterApi.openShift(openingBalance, { id: 'user-2', name: 'João Silva (Caixa 1)' });
-    setCurrentShift(newShift);
-    setShiftOpenModalVisible(false);
-  }, []);
+    if (!currentUser) return;
+    const newShift = await cashRegisterApi.openShift(openingBalance, { id: currentUser.id, name: currentUser.name });
+    setCurrentShift(newShift); setShiftOpenModalVisible(false);
+  }, [currentUser]);
 
   const handleCloseShift = useCallback(async (closingBalance: number) => {
       if (!currentShift) return;
       await cashRegisterApi.closeShift(closingBalance);
-      setCurrentShift(null);
-      await refreshShiftHistory();
-      setActiveShiftModal(null);
-      setShiftOpenModalVisible(true); // Force new shift opening
+      setCurrentShift(null); await refreshShiftHistory();
+      setActiveShiftModal(null); setShiftOpenModalVisible(true);
   }, [currentShift, refreshShiftHistory]);
 
   const handleRecordShiftMovement = useCallback(async (amount: number, reason: string) => {
-      if (!currentShift) return;
-      const updatedShift = await cashRegisterApi.recordMovement(movementType, amount, reason, {id: 'user-2'});
-      setCurrentShift(updatedShift);
-      setActiveShiftModal(null);
-  }, [currentShift, movementType]);
+      if (!currentShift || !currentUser) return;
+      const updatedShift = await cashRegisterApi.recordMovement(movementType, amount, reason, {id: currentUser.id});
+      setCurrentShift(updatedShift); setActiveShiftModal(null);
+  }, [currentShift, movementType, currentUser]);
 
   const openMovementModal = (type: 'Suprimento' | 'Sangria') => {
-      setMovementType(type);
-      setActiveShiftModal('movement');
+      setMovementType(type); setActiveShiftModal('movement');
   }
 
   // --- KEYBOARD SHORTCUTS ---
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (currentView !== 'pdv' || isPaymentModalOpen || isHomologationPanelOpen || !!activeShiftModal || isShiftOpenModalVisible) {
-        return;
-      }
+      const isAnyModalOpen = isPaymentModalOpen || isHomologationPanelOpen || !!activeShiftModal || isShiftOpenModalVisible || isCustomerSearchModalOpen || isDiscountModalOpen;
+      if (currentView !== 'pdv' || isAnyModalOpen) return;
 
       if (event.key === 'F1') {
-        event.preventDefault();
-        document.getElementById('product-search-input')?.focus();
+        event.preventDefault(); document.getElementById('product-search-input')?.focus();
       } else if (event.key === 'F2') {
-        event.preventDefault();
-        if (cart.length > 0) {
-          handleOpenPaymentModal();
-        }
+        event.preventDefault(); if (cart.length > 0) handleOpenPaymentModal();
       } else if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
-        event.preventDefault();
-        if (cart.length > 0) {
-          handleClearCart();
-        }
+        event.preventDefault(); if (cart.length > 0) handleClearCart();
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [currentView, isPaymentModalOpen, isHomologationPanelOpen, cart.length, handleClearCart, activeShiftModal, isShiftOpenModalVisible]);
+    return () => { document.removeEventListener('keydown', handleKeyDown); };
+  }, [currentView, cart.length, handleClearCart, isPaymentModalOpen, isHomologationPanelOpen, activeShiftModal, isShiftOpenModalVisible, isCustomerSearchModalOpen, isDiscountModalOpen]);
   
   // --- ERP CRUD HANDLERS ---
   const handleAddProduct = useCallback(async (productData: Omit<Product, 'id'>) => {
-    await productApi.addProduct(productData);
-    await refreshProducts();
-    await refreshInventoryData(); // New products need stock initialized
+    await productApi.addProduct(productData); await refreshProducts(); await refreshInventoryData();
   }, [refreshProducts, refreshInventoryData]);
 
   const handleUpdateProduct = useCallback(async (productData: Product) => {
-    await productApi.updateProduct(productData);
-    await refreshProducts();
+    await productApi.updateProduct(productData); await refreshProducts();
   }, [refreshProducts]);
 
   const handleDeleteProduct = useCallback(async (productId: string) => {
-    await productApi.deleteProduct(productId);
-    await refreshProducts();
-    await refreshInventoryData();
+    await productApi.deleteProduct(productId); await refreshProducts(); await refreshInventoryData();
   }, [refreshProducts, refreshInventoryData]);
 
-  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id'>) => {
-    await customerApi.addCustomer(customerData);
-    await refreshCustomers();
+  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt'>) => {
+    await customerApi.addCustomer(customerData); await refreshCustomers();
   }, [refreshCustomers]);
 
   const handleUpdateCustomer = useCallback(async (customerData: Customer) => {
-    await customerApi.updateCustomer(customerData);
-    await refreshCustomers();
+    await customerApi.updateCustomer(customerData); await refreshCustomers();
   }, [refreshCustomers]);
 
   const handleDeleteCustomer = useCallback(async (customerId: string) => {
-    await customerApi.deleteCustomer(customerId);
-    await refreshCustomers();
+    await customerApi.deleteCustomer(customerId); await refreshCustomers();
   }, [refreshCustomers]);
 
   const handleAddSupplier = useCallback(async (supplierData: Omit<Supplier, 'id'>) => {
-    await supplierApi.addSupplier(supplierData);
-    await refreshSuppliers();
+    await supplierApi.addSupplier(supplierData); await refreshSuppliers();
   }, [refreshSuppliers]);
   
   const handleUpdateSupplier = useCallback(async (supplierData: Supplier) => {
-    await supplierApi.updateSupplier(supplierData);
-    await refreshSuppliers();
+    await supplierApi.updateSupplier(supplierData); await refreshSuppliers();
   }, [refreshSuppliers]);
 
   const handleDeleteSupplier = useCallback(async (supplierId: string) => {
-    await supplierApi.deleteSupplier(supplierId);
-    await refreshSuppliers();
+    await supplierApi.deleteSupplier(supplierId); await refreshSuppliers();
   }, [refreshSuppliers]);
 
   const handleAddUser = useCallback(async (userData: Omit<User, 'id'>) => {
-    await userApi.addUser(userData);
-    await refreshUsers();
+    await userApi.addUser(userData); await refreshUsers();
   }, [refreshUsers]);
   
   const handleUpdateUser = useCallback(async (userData: User) => {
-    await userApi.updateUser(userData);
-    await refreshUsers();
+    await userApi.updateUser(userData); await refreshUsers();
   }, [refreshUsers]);
 
   const handleDeleteUser = useCallback(async (userId: string) => {
-    await userApi.deleteUser(userId);
-    await refreshUsers();
+    await userApi.deleteUser(userId); await refreshUsers();
   }, [refreshUsers]);
 
 
@@ -356,47 +375,25 @@ const App: React.FC = () => {
   const handleNFeImport = useCallback(async (file: File): Promise<NFeImportResult> => {
     const xmlContent = await file.text();
     const result = await nfeProcessor.processNFeFile(xmlContent);
-    // After processing, refresh all relevant data sources
-    await Promise.all([
-        refreshProducts(),
-        refreshSuppliers(),
-        refreshInventoryData()
-    ]);
+    await Promise.all([ refreshProducts(), refreshSuppliers(), refreshInventoryData() ]);
     return result;
   }, [refreshProducts, refreshSuppliers, refreshInventoryData]);
 
 
   // --- RENDER LOGIC ---
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => product.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (currentView === 'erp') {
     return (
-      <ERPDashboard 
-        products={products}
-        onAddProduct={handleAddProduct}
-        onUpdateProduct={handleUpdateProduct}
-        onDeleteProduct={handleDeleteProduct}
-        customers={customers}
-        onAddCustomer={handleAddCustomer}
-        onUpdateCustomer={handleUpdateCustomer}
-        onDeleteCustomer={handleDeleteCustomer}
-        suppliers={suppliers}
-        onAddSupplier={handleAddSupplier}
-        onUpdateSupplier={handleUpdateSupplier}
-        onDeleteSupplier={handleDeleteSupplier}
-        salesHistory={salesHistory}
-        shiftHistory={shiftHistory}
-        users={users}
-        onAddUser={handleAddUser}
-        onUpdateUser={handleUpdateUser}
-        onDeleteUser={handleDeleteUser}
-        financials={financials}
-        stockLevels={stockLevels}
-        stockMovements={stockMovements}
-        onRefreshInventory={refreshInventoryData}
-        onNFeImport={handleNFeImport}
+      <ERPDashboard
+        currentUser={currentUser} 
+        products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct}
+        customers={customers} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer}
+        suppliers={suppliers} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier}
+        salesHistory={salesHistory} shiftHistory={shiftHistory}
+        users={users} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser}
+        financials={financials} stockLevels={stockLevels} stockMovements={stockMovements}
+        onRefreshInventory={refreshInventoryData} onNFeImport={handleNFeImport}
         onBackToPDV={() => setCurrentView('pdv')} 
       />
     );
@@ -407,16 +404,15 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen font-sans bg-brand-primary text-brand-text">
       <PDVHeader
-        isOnline={isOnline}
-        onToggleOnline={() => setIsOnline(prev => !prev)}
-        pendingSalesCount={pendingSalesCount}
-        isSyncing={isSyncing}
+        isOnline={isOnline} onToggleOnline={() => setIsOnline(prev => !prev)}
+        pendingSalesCount={pendingSalesCount} isSyncing={isSyncing}
         onOpenHomologationPanel={() => setHomologationPanelOpen(true)}
         onOpenERP={() => setCurrentView('erp')}
         shiftStatus={currentShift?.status || 'Fechado'}
         onCloseShift={() => setActiveShiftModal('close')}
         onSuprimento={() => openMovementModal('Suprimento')}
         onSangria={() => openMovementModal('Sangria')}
+        currentUser={currentUser}
       />
       <main className="flex flex-1 overflow-hidden relative">
         {isPdvLocked && (
@@ -436,10 +432,7 @@ const App: React.FC = () => {
                     </svg>
                 </div>
                 <input
-                    id="product-search-input"
-                    type="search"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    id="product-search-input" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Buscar produto... (F1)"
                     className="w-full bg-brand-secondary border border-brand-border rounded-md p-2 pl-10 text-brand-text placeholder-brand-subtle focus:ring-1 focus:ring-brand-accent focus:border-brand-accent"
                 />
@@ -451,10 +444,15 @@ const App: React.FC = () => {
         <aside className={`w-1/3 bg-brand-secondary border-l border-brand-border flex flex-col ${isPdvLocked ? 'pointer-events-none blur-sm' : ''}`}>
           <CartDisplay
             items={cart}
+            subtotal={subtotal}
+            totalDiscount={totalDiscount}
+            total={total}
+            selectedCustomer={selectedCustomer}
             onUpdateQuantity={handleUpdateQuantity}
             onClearCart={handleClearCart}
             onPay={handleOpenPaymentModal}
-            total={total}
+            onSelectCustomer={() => setCustomerSearchModalOpen(true)}
+            onApplyDiscount={handleOpenDiscountModal}
           />
         </aside>
       </main>
@@ -462,32 +460,37 @@ const App: React.FC = () => {
       {isShiftOpenModalVisible && <OpenShiftModal onOpen={handleOpenShift} />}
 
       {activeShiftModal === 'close' && currentShift && (
-          <CloseShiftModal 
-            shift={currentShift}
-            onClose={() => setActiveShiftModal(null)}
-            onSubmit={handleCloseShift}
-          />
+          <CloseShiftModal shift={currentShift} onClose={() => setActiveShiftModal(null)} onSubmit={handleCloseShift} />
       )}
 
       {activeShiftModal === 'movement' && currentShift && (
-          <ShiftMovementModal
-            type={movementType}
-            onClose={() => setActiveShiftModal(null)}
-            onSubmit={handleRecordShiftMovement}
+          <ShiftMovementModal type={movementType} onClose={() => setActiveShiftModal(null)} onSubmit={handleRecordShiftMovement} />
+      )}
+
+      {isCustomerSearchModalOpen && (
+          <CustomerSearchModal
+              customers={customers}
+              onClose={() => setCustomerSearchModalOpen(false)}
+              onSelect={(customer) => {
+                  setSelectedCustomer(customer);
+                  setCustomerSearchModalOpen(false);
+              }}
+          />
+      )}
+      
+      {isDiscountModalOpen && discountTarget && (
+          <DiscountModal
+              target={discountTarget}
+              onClose={() => setDiscountModalOpen(false)}
+              onSubmit={handleApplyDiscount}
           />
       )}
 
       {isPaymentModalOpen && (
-        <PaymentModal
-          total={total}
-          onFinalize={handleFinalizeSale}
-          onCancel={() => setPaymentModalOpen(false)}
-        />
+        <PaymentModal total={total} onFinalize={handleFinalizeSale} onCancel={() => setPaymentModalOpen(false)} />
       )}
 
-       {isHomologationPanelOpen && (
-        <HomologationPanel onClose={() => setHomologationPanelOpen(false)} />
-      )}
+       {isHomologationPanelOpen && <HomologationPanel onClose={() => setHomologationPanelOpen(false)} />}
       {currentView === 'pdv' && <ShortcutHelper />}
     </div>
   );

@@ -5,7 +5,7 @@ import ConfirmationModal from './ConfirmationModal';
 
 interface CustomerManagementProps {
   customers: Customer[];
-  onAdd: (customer: Omit<Customer, 'id'>) => Promise<void>;
+  onAdd: (customer: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt'>) => Promise<void>;
   onUpdate: (customer: Customer) => Promise<void>;
   onDelete: (customerId: string) => Promise<void>;
 }

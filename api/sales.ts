@@ -11,39 +11,40 @@ const MOCK_EMITENTE: Emitente = {
   IE: '111111111111', CRT: '1',
 };
 
-function createNFCeObject(cart: CartItem[], total: number, payments: Payment[]): NFCe {
+function createNFCeObject(cart: CartItem[], subtotal: number, totalDiscount: number): NFCe {
   const produtos: ProdutoNFCe[] = cart.map(item => {
     const vProd = item.price * item.quantity;
+    let vDesc = 0;
+    if (item.discount) {
+        vDesc = item.discount.type === 'fixed'
+            ? item.discount.amount
+            : vProd * (item.discount.amount / 100);
+    }
+
     return {
-      cProd: item.id, cEAN: `SEM GTIN`, xProd: item.name, NCM: item.fiscalData?.ncm || '00000000',
+      cProd: item.code, cEAN: `SEM GTIN`, xProd: item.name, NCM: item.fiscalData?.ncm || '00000000',
       CFOP: item.fiscalData?.cfop || '5102', uCom: 'UN', qCom: item.quantity, vUnCom: item.price,
-      vProd, cEANTrib: `SEM GTIN`, uTrib: 'UN', qTrib: item.quantity, vUnTrib: item.price,
+      vProd, vDesc: vDesc > 0 ? vDesc : undefined, cEANTrib: `SEM GTIN`, uTrib: 'UN', 
+      qTrib: item.quantity, vUnTrib: item.price,
       indTot: 1, imposto: {
-        vTotTrib: vProd * 0.15, // Mock tribute calculation
+        vTotTrib: (vProd - vDesc) * 0.15, // Mock tribute calculation
         ICMS: { ICMSSN102: { orig: '0', CSOSN: '102' } },
         PIS: { PISSN: { CST: '99' } }, COFINS: { COFINSSN: { CST: '99' } },
       },
     };
   });
+
   const vTotTribGlobal = produtos.reduce((sum, p) => sum + p.imposto.vTotTrib, 0);
+  const totalNf = subtotal - totalDiscount;
+
   const icmsTot: TotalNFCe = {
       vBC: 0.00, vICMS: 0.00, vICMSDeson: 0.00, vFCP: 0.00, vBCST: 0.00, vST: 0.00,
-      vFCPST: 0.00, vFCPSTRet: 0.00, vProd: total, vFrete: 0.00, vSeg: 0.00, vDesc: 0.00,
+      vFCPST: 0.00, vFCPSTRet: 0.00, vProd: subtotal, vFrete: 0.00, vSeg: 0.00, vDesc: totalDiscount,
       vII: 0.00, vIPI: 0.00, vIPIDevol: 0.00, vPIS: 0.00, vCOFINS: 0.00, vOutro: 0.00,
-      vNF: total, vTotTrib: vTotTribGlobal
+      vNF: totalNf, vTotTrib: vTotTribGlobal
   };
 
-  const paymentMethodMap: Record<PaymentMethod, string> = {
-      'Dinheiro': '01',
-      'Credito': '03',
-      'Debito': '04',
-      'PIX': '17',
-  };
-
-  const detPag: PagamentoNFCe[] = payments.map(p => ({
-      tpag: paymentMethodMap[p.method],
-      vPag: p.amount,
-  }));
+  const detPag: PagamentoNFCe[] = [{ tpag: '01', vPag: totalNf }]; // Simplified for this step
 
   return {
     infNFe: {
@@ -62,6 +63,7 @@ function createNFCeObject(cart: CartItem[], total: number, payments: Payment[]):
 
 function objectToXml(obj: any, indent = ''): string {
     return Object.entries(obj).map(([key, value]) => {
+        if (value === undefined) return '';
         if (Array.isArray(value)) {
             return value.map(item => `${indent}<${key}>\n${objectToXml(item, indent + '  ')}${indent}</${key}>`).join('\n');
         } else if (typeof value === 'object' && value !== null) {
@@ -71,10 +73,11 @@ function objectToXml(obj: any, indent = ''): string {
     }).join('\n');
 }
 
-const generateNFCeXml = (cart: CartItem[], total: number, payments: Payment[]): Promise<string> => new Promise(resolve => {
+const generateNFCeXml = (cart: CartItem[], subtotal: number, totalDiscount: number): Promise<string> => new Promise(resolve => {
   setTimeout(() => {
-    const nfceObject = createNFCeObject(cart, total, payments);
-    resolve(`<?xml version="1.0" encoding="UTF-8"?>\n<NFe xmlns="http://www.portalfiscal.inf.br/nfe">\n${objectToXml(nfceObject, '  ')}</NFe>`);
+    const nfceObject = createNFCeObject(cart, subtotal, totalDiscount);
+    const xmlString = `<?xml version="1.0" encoding="UTF-8"?>\n<NFe xmlns="http://www.portalfiscal.inf.br/nfe">\n${objectToXml(nfceObject, '  ')}\n</NFe>`;
+    resolve(xmlString);
   }, 1000);
 });
 
@@ -90,10 +93,10 @@ const signNFCeXml = (xml: string): Promise<string> => new Promise(resolve => {
 
 export const generateAndSignNfce = async (
     cart: CartItem[], 
-    total: number,
-    payments: Payment[],
+    subtotal: number,
+    totalDiscount: number
 ): Promise<string> => {
-    const xml = await generateNFCeXml(cart, total, payments);
+    const xml = await generateNFCeXml(cart, subtotal, totalDiscount);
     const signedXml = await signNFCeXml(xml);
     return signedXml;
 };

@@ -16,6 +16,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
           <thead className="bg-brand-border/50">
             <tr>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Data / Hora</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Cliente</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Pagamento</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Itens</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Total</th>
@@ -24,7 +25,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
           <tbody className="divide-y divide-brand-border">
             {sortedSales.length === 0 && (
               <tr>
-                <td colSpan={4} className="text-center py-10 text-brand-subtle">
+                <td colSpan={5} className="text-center py-10 text-brand-subtle">
                   Nenhuma venda registrada ainda.
                 </td>
               </tr>
@@ -33,6 +34,9 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
               <tr key={sale.id} className="hover:bg-brand-border/30">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-white">{new Date(sale.timestamp).toLocaleString('pt-BR')}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-brand-subtle">{sale.customerName || 'Não identificado'}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-brand-subtle">{sale.payments.map(p => p.method).join(', ')}</div>

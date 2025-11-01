@@ -19,6 +19,8 @@ export interface Customer {
     email: string;
     phone: string;
     cpf: string;
+    loyaltyPoints: number;
+    createdAt: string;
 }
 
 export interface Supplier {
@@ -33,6 +35,10 @@ export interface Supplier {
 
 export interface CartItem extends Product {
   quantity: number;
+  discount?: {
+    amount: number;
+    type: 'fixed' | 'percentage';
+  };
 }
 
 export type PaymentMethod = 'Dinheiro' | 'PIX' | 'Credito' | 'Debito';
@@ -51,13 +57,19 @@ export interface SaleRecord {
   payments: Payment[];
   changeGiven: number;
   nfceXml: string;
+  customerId?: string;
+  customerName?: string;
+  totalDiscount: number;
+  loyaltyPointsEarned: number;
 }
+
+export type UserRole = 'Admin' | 'Caixa';
 
 export interface User {
     id: string;
     name: string;
     email: string;
-    role: 'Admin' | 'Caixa';
+    role: UserRole;
     status: 'Active' | 'Inactive';
 }
 
@@ -69,6 +81,17 @@ export interface AccountTransaction {
     status: 'Pendente' | 'Pago' | 'Atrasado';
     type: 'payable' | 'receivable';
 }
+
+export type Permission = 
+  | 'view_dashboard'
+  | 'manage_products'
+  | 'manage_customers'
+  | 'manage_suppliers'
+  | 'view_reports'
+  | 'manage_inventory'
+  | 'manage_financials'
+  | 'manage_users';
+
 
 // === Fiscal Types (NFC-e) ===
 
@@ -117,6 +140,7 @@ export interface ProdutoNFCe {
   qCom: number;
   vUnCom: number;
   vProd: number;
+  vDesc?: number;
   cEANTrib: string;
   uTrib: string;
   qTrib: number;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { User } from '../types';
 
 const ClockIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -50,9 +51,10 @@ interface PDVHeaderProps {
     onCloseShift: () => void;
     onSuprimento: () => void;
     onSangria: () => void;
+    currentUser: User | null;
 }
 
-const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP, shiftStatus, onCloseShift, onSuprimento, onSangria }) => {
+const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP, shiftStatus, onCloseShift, onSuprimento, onSangria, currentUser }) => {
     const [time, setTime] = useState(new Date());
     const isShiftOpen = shiftStatus === 'Aberto';
 
@@ -118,7 +120,7 @@ const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pending
                 {renderSyncStatus()}
                 <div className="flex items-center gap-2 text-brand-subtle">
                     <UserIcon className="w-5 h-5" />
-                    <span className="text-sm">Caixa 01</span>
+                    <span className="text-sm">{currentUser?.name || 'Carregando...'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-brand-subtle">
                     <ClockIcon className="w-5 h-5" />
