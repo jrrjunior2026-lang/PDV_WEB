@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as authApi from '../api/auth';
 import type { User } from '../types';
+import * as tokenService from '../services/tokenService';
 
 interface LoginProps {
     onLogin: (user: User) => void;
@@ -125,12 +126,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
 
         setIsLoading(true);
-        const user = await authApi.login(email);
+        const result = await authApi.login(email);
         
         setTimeout(() => {
-            if (user) {
+            if (result) {
+                const { user, token } = result;
                 clearLoginAttempts(email.toLowerCase());
-                onLogin(user);
+                tokenService.saveToken(token); // Save the token
+                onLogin(user); // Pass the user object up
             } else {
                 recordFailedAttempt(email.toLowerCase());
                 setLoginError('Credenciais inválidas ou usuário inativo.');

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder } from './types';
@@ -33,6 +34,7 @@ import * as financialApi from './api/financials';
 import * as cashRegisterApi from './api/cashRegister';
 import * as purchasingApi from './api/purchasing';
 import * as geminiService from './services/geminiService';
+import * as tokenService from './services/tokenService';
 
 
 type AppView = 'pdv' | 'erp';
@@ -166,6 +168,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogout = useCallback(() => {
+    tokenService.removeToken();
     setCurrentUser(null);
     setProducts([]);
     setCustomers([]);
