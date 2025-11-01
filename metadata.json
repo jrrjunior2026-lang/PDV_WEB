@@ -1,5 +1,5 @@
 {
-  "name": "ERP + PDV Project Command Center",
-  "description": "A dashboard to visualize and analyze the project plan for a complete, offline-first ERP and Point-of-Sale system for Brazil, with integrated Gemini-powered analysis for complex technical planning.",
+  "name": "ERP + PDV Fiscal Offline-First (Brasil)",
+  "description": "A full-stack application featuring an offline-first Point-of-Sale (PDV) frontend and an integrated Enterprise Resource Planning (ERP) backend for managing products, sales, and fiscal operations.",
   "requestFramePermissions": []
 }

@@ -1,10 +1,8 @@
-
-import type { ReactNode } from 'react';
-
-// === PDV Types ===
+// === PDV & ERP Shared Types ===
 
 export interface Product {
   id: string;
+  code: string; // For NF-e cProd matching
   name: string;
   price: number;
   imageUrl: string;
@@ -15,8 +13,62 @@ export interface Product {
   };
 }
 
+export interface Customer {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    cpf: string;
+}
+
+export interface Supplier {
+    id: string;
+    name: string;
+    contactPerson: string;
+    email: string;
+    phone: string;
+    cnpj: string;
+}
+
+
 export interface CartItem extends Product {
   quantity: number;
+}
+
+export interface SaleRecord {
+  id: string;
+  timestamp: string;
+  items: CartItem[];
+  total: number;
+  nfceXml: string;
+  pixTransactionId: string;
+}
+
+export interface User {
+    id: string;
+    name: string;
+    email: string;
+    role: 'Admin' | 'Caixa';
+    status: 'Active' | 'Inactive';
+}
+
+export interface AccountTransaction {
+    id: string;
+    description: string;
+    amount: number;
+    dueDate: string;
+    status: 'Pendente' | 'Pago' | 'Atrasado';
+    type: 'payable' | 'receivable';
+}
+
+export interface NcmCode {
+    code: string;
+    description: string;
+}
+
+export interface CfopCode {
+    code: string;
+    description: string;
 }
 
 
@@ -165,44 +217,66 @@ export interface PixWebhookPayload {
 export interface QueuedSale {
   id: string;
   timestamp: string;
-  items: CartItem[];
-  total: number;
+  saleData: SaleRecord;
 }
 
 // === Homologation Types ===
 export interface HomologationItem {
+    id: string;
+    text: string;
+    completed: boolean;
+}
+
+// === Inventory Types ===
+export interface StockLevel {
+  productId: string;
+  productName: string;
+  quantity: number;
+}
+
+export interface StockMovement {
   id: string;
-  text: string;
-  completed: boolean;
+  timestamp: string;
+  productId: string;
+  productName: string;
+  type: 'Venda' | 'Ajuste de Inventário' | 'Entrada Inicial' | 'Entrada (NF-e)';
+  quantityChange: number;
+  reason: string; // e.g., Sale ID or "Inventory Count"
 }
 
-
-// FIX: Added missing type definitions from previous planning phase
-// to prevent compilation errors in unused components, which will be removed.
-export interface StackItem {
-  name: string;
-  description: string;
+export interface InventoryCountItem {
+  productId: string;
+  countedQuantity: number;
 }
 
-export interface StackCategory {
-  title: string;
-  items: StackItem[];
+export interface InventoryReport {
+  discrepancies: {
+    productId: string;
+    productName: string;
+    expected: number;
+    counted: number;
+    difference: number;
+  }[];
+  timestamp: string;
 }
 
-export interface Feature {
-  title: string;
-  icon: ReactNode;
-  details: string[];
-}
-
-export interface Phase {
-  name: string;
-  description: string;
-  outputs: string[];
-}
-
-export interface AnalysisTopic {
-  id: string;
-  name: string;
-  data: any;
+// === NF-e Import Types ===
+export interface NFeImportResult {
+  summary: {
+    invoiceNumber: string;
+    supplierFound: boolean;
+    supplierCreated: boolean;
+    productsProcessed: number;
+    newProductsCreated: number;
+    stockEntries: number;
+  };
+  details: {
+    supplierName: string;
+    products: {
+      code: string;
+      name: string;
+      quantity: number;
+      isNew: boolean;
+    }[];
+  };
 }
