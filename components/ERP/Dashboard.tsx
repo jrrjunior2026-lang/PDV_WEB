@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission, PurchaseOrder } from '../../types';
 import ProductManagement from './ProductManagement';
@@ -229,14 +230,15 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   }, [props.currentUser]);
   
   const navSections = useMemo(() => {
-    // FIX: By casting the initial value of the reduce function, we help TypeScript correctly infer the type of `navSections`, which resolves the error on `items.map`.
-    return visibleNavItems.reduce((acc, item) => {
-        if (!acc[item.section]) {
-            acc[item.section] = [];
+    // FIX: The `reduce` function was causing type inference issues. Replaced with a standard loop to ensure `navSections` is correctly typed, resolving the error on `items.map`.
+    const sections: Record<string, typeof visibleNavItems> = {};
+    for (const item of visibleNavItems) {
+        if (!sections[item.section]) {
+            sections[item.section] = [];
         }
-        acc[item.section].push(item);
-        return acc;
-    }, {} as Record<string, typeof visibleNavItems>);
+        sections[item.section].push(item);
+    }
+    return sections;
   }, [visibleNavItems]);
 
 
@@ -249,11 +251,12 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
         </div>
         <nav>
           <ul className="space-y-4">
-            {Object.entries(navSections).map(([section, items]) => (
+            {/* FIX: Replaced Object.entries with Object.keys to avoid a type inference issue where the 'items' array was incorrectly typed as 'unknown'. */}
+            {Object.keys(navSections).map((section) => (
                 <li key={section}>
                     <h3 className="px-3 text-xs font-semibold text-brand-subtle uppercase tracking-wider mb-2">{section}</h3>
                     <ul className="space-y-1">
-                        {items.map(item => <NavItem key={item.view} {...item} />)}
+                        {navSections[section].map(item => <NavItem key={item.view} {...item} />)}
                     </ul>
                 </li>
             ))}

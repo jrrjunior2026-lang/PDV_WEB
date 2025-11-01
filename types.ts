@@ -3,6 +3,7 @@
 export interface Product {
   id: string;
   code: string; // For NF-e cProd matching
+  ean?: string; // EAN-13 barcode
   name: string;
   price: number;
   imageUrl: string;
