@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { SaleRecord } from '../../types';
 
@@ -17,7 +16,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
           <thead className="bg-brand-border/50">
             <tr>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Data / Hora</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">ID da Transação (PIX)</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Pagamento</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Itens</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Total</th>
             </tr>
@@ -36,7 +35,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
                   <div className="text-sm text-white">{new Date(sale.timestamp).toLocaleString('pt-BR')}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-brand-subtle font-mono">{sale.pixTransactionId}</div>
+                  <div className="text-sm text-brand-subtle">{sale.payments.map(p => p.method).join(', ')}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-text">
                   {sale.items.reduce((sum, item) => sum + item.quantity, 0)}

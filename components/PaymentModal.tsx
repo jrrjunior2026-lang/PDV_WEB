@@ -1,134 +1,193 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import type { Payment, PaymentMethod } from '../types';
 
-import React from 'react';
-import type { TransactionState } from '../App';
-import type { PixCharge } from '../types';
-
+const WalletIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3.375m-3.375 2.25h10.5m0 0a9 9 0 0 0-9-9m9 9a9 9 0 0 1-9-9m9 9v3.75a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V8.25a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v3.75" /></svg>
+);
 const QrCodeIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5A.75.75 0 0 1 4.5 3.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm0 9a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm0-4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm9-4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm-4.5 4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm9 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm-4.5 4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm0 4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm9-4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Z" />
-    </svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5A.75.75 0 0 1 4.5 3.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm0 9a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm0-4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm9-4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm-4.5 4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm9 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm-4.5 4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm0 4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Zm9-4.5a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-1.5Z" /></svg>
 );
-
+const CreditCardIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3.375m-3.375 2.25h10.5m0 0a9 9 0 0 0-9-9m9 9a9 9 0 0 1-9-9m9 9v3.75a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V8.25a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v3.75" /></svg>
+);
+const Spinner = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {...props}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+);
 const CheckCircleIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-    </svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
 );
 
-const ExclamationTriangleIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-    </svg>
-);
-
-const Spinner = () => (
-    <svg className="animate-spin h-8 w-8 text-brand-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-    </svg>
-);
-
-const getStatusContent = (state: TransactionState): { title: string, subtitle: string } => {
-    switch (state) {
-        case 'generating_xml': return { title: 'Gerando XML da NFC-e...', subtitle: 'Por favor, aguarde um momento.' };
-        case 'signing_xml': return { title: 'Assinando Documento Fiscal...', subtitle: 'Quase pronto para o pagamento.' };
-        case 'generating_pix': return { title: 'Gerando PIX Dinâmico...', subtitle: 'Conectando ao provedor de pagamento.' };
-        case 'awaiting_payment': return { title: 'Aguardando Pagamento via PIX', subtitle: 'Leia o QR Code com o app do seu banco.' };
-        case 'payment_confirmed': return { title: 'Pagamento Confirmado!', subtitle: 'Sua NFC-e foi emitida com sucesso.' };
-        case 'error': return { title: 'Erro na Transação', subtitle: 'Não foi possível concluir a operação.' };
-        default: return { title: 'Iniciando Transação...', subtitle: 'Aguarde...' };
-    }
-}
-
-interface TransactionModalProps {
+interface PaymentModalProps {
   total: number;
-  onClose: () => void;
-  state: TransactionState;
-  errorMessage: string | null;
-  signedXml: string | null;
-  pixCharge: PixCharge | null;
+  onFinalize: (payments: Payment[], changeGiven: number) => void;
+  onCancel: () => void;
 }
 
-const TransactionModal: React.FC<TransactionModalProps> = ({ total, onClose, state, errorMessage, signedXml, pixCharge }) => {
-  const isProcessing = ['generating_xml', 'signing_xml', 'generating_pix'].includes(state);
-  const { title, subtitle } = getStatusContent(state);
+type CardState = 'idle' | 'processing' | 'approved' | 'failed';
 
-  const renderContent = () => {
-    if (isProcessing) {
-        return <Spinner />;
+const PaymentModal: React.FC<PaymentModalProps> = ({ total, onFinalize, onCancel }) => {
+    const [payments, setPayments] = useState<Payment[]>([]);
+    const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('Dinheiro');
+    const [paymentValue, setPaymentValue] = useState('');
+    const [receivedValue, setReceivedValue] = useState('');
+    const [cardState, setCardState] = useState<CardState>('idle');
+    const [isFinalizing, setIsFinalizing] = useState(false);
+
+    const amountPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
+    const amountRemaining = useMemo(() => total - amountPaid, [total, amountPaid]);
+    const change = useMemo(() => {
+        if (selectedMethod === 'Dinheiro') {
+            const received = parseFloat(receivedValue) || 0;
+            const toPay = parseFloat(paymentValue) || amountRemaining;
+            return received > toPay ? received - toPay : 0;
+        }
+        return 0;
+    }, [receivedValue, paymentValue, amountRemaining, selectedMethod]);
+
+    useEffect(() => {
+        setPaymentValue(amountRemaining > 0 ? amountRemaining.toFixed(2) : '');
+    }, [amountRemaining]);
+    
+    const handleAddPayment = () => {
+        let amount = parseFloat(paymentValue);
+        if (isNaN(amount) || amount <= 0) return;
+
+        if (selectedMethod === 'Dinheiro') {
+            const received = parseFloat(receivedValue);
+            if (!isNaN(received) && received >= amount) {
+                amount = Math.min(amount, amountRemaining);
+            } else {
+                // Handle case where received amount is less than payment amount
+                return;
+            }
+        }
+        
+        setPayments(prev => [...prev, { method: selectedMethod, amount }]);
+        setReceivedValue('');
+    };
+    
+    const handleCardPayment = () => {
+        setCardState('processing');
+        setTimeout(() => {
+            setCardState('approved');
+            setTimeout(() => {
+                handleAddPayment();
+                setCardState('idle');
+            }, 1000);
+        }, 2000);
     }
-    if (state === 'error') {
-        return (
-            <div className="my-4 p-4 bg-red-900/50 border border-red-500/50 text-red-300 rounded-md text-left w-full">
-                <div className="flex">
-                    <ExclamationTriangleIcon className="h-6 w-6 mr-3 text-red-400 flex-shrink-0"/>
-                    <div>
-                        <h4 className="font-bold">Falha na Emissão</h4>
-                        <p className="text-sm break-words">{errorMessage}</p>
-                    </div>
+    
+    const handleFinalize = async () => {
+        setIsFinalizing(true);
+        const finalChange = payments.some(p => p.method === 'Dinheiro') ? change : 0;
+        await onFinalize(payments, finalChange);
+        setIsFinalizing(false);
+    }
+
+    const renderPaymentMethodUI = () => {
+        if (cardState !== 'idle') {
+            return (
+                <div className="text-center p-8 flex flex-col items-center justify-center h-48">
+                    {cardState === 'processing' && <><Spinner className="w-12 h-12 text-brand-accent mb-4" /> <p>Processando...</p></>}
+                    {cardState === 'approved' && <><CheckCircleIcon className="w-16 h-16 text-green-500 mb-4" /> <p className="font-bold">Aprovado!</p></>}
                 </div>
-            </div>
-        );
+            );
+        }
+
+        switch (selectedMethod) {
+            case 'Dinheiro':
+                return (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm text-brand-subtle">Valor a Pagar</label>
+                            <input type="number" value={paymentValue} onChange={e => setPaymentValue(e.target.value)} className="w-full bg-brand-primary p-2 rounded-md border border-brand-border text-lg text-right" />
+                        </div>
+                        <div>
+                            <label className="text-sm text-brand-subtle">Valor Recebido</label>
+                            <input type="number" value={receivedValue} onChange={e => setReceivedValue(e.target.value)} className="w-full bg-brand-primary p-2 rounded-md border border-brand-border text-lg text-right" placeholder="0,00" autoFocus />
+                        </div>
+                        <button onClick={handleAddPayment} className="w-full py-2 bg-blue-600 rounded-md text-white font-semibold hover:bg-blue-500">Adicionar Pagamento</button>
+                    </div>
+                );
+            case 'Credito':
+            case 'Debito':
+                return (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm text-brand-subtle">Valor a Pagar</label>
+                            <input type="number" value={paymentValue} onChange={e => setPaymentValue(e.target.value)} className="w-full bg-brand-primary p-2 rounded-md border border-brand-border text-lg text-right" />
+                        </div>
+                         <button onClick={handleCardPayment} className="w-full py-3 bg-blue-600 rounded-md text-white font-semibold hover:bg-blue-500">Processar Cartão</button>
+                    </div>
+                );
+            case 'PIX':
+                 return (
+                    <div className="text-center p-4 flex flex-col items-center justify-center">
+                       <QrCodeIcon className="w-24 h-24 text-brand-text mb-4" />
+                       <p className="text-sm text-brand-subtle mb-4">Aponte a câmera para o QR Code para pagar.</p>
+                       <button onClick={handleAddPayment} className="w-full py-2 bg-green-600 rounded-md text-white font-semibold hover:bg-green-500">Confirmar Pagamento PIX</button>
+                    </div>
+                );
+        }
     }
-    if (state === 'awaiting_payment') {
-        return (
-            <div className="relative p-4 bg-white rounded-lg inline-block">
-                <div className="absolute inset-0 rounded-lg bg-green-400/50 animate-ping"></div>
-                <QrCodeIcon className="w-48 h-48 text-black relative z-10" />
-            </div>
-        )
-    }
-    if (state === 'payment_confirmed') {
-        return <CheckCircleIcon className="w-48 h-48 text-green-500" />;
-    }
-    return null;
-  }
+    
+    const methods: { name: PaymentMethod, icon: React.ReactNode }[] = [
+        { name: 'Dinheiro', icon: <WalletIcon className="w-6 h-6" /> },
+        { name: 'PIX', icon: <QrCodeIcon className="w-6 h-6" /> },
+        { name: 'Debito', icon: <CreditCardIcon className="w-6 h-6" /> },
+        { name: 'Credito', icon: <CreditCardIcon className="w-6 h-6" /> },
+    ];
   
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-brand-secondary rounded-lg shadow-2xl p-8 border border-brand-border w-full max-w-lg flex flex-col items-center">
-        <h2 className="text-2xl font-bold text-white mb-2 text-center">{title}</h2>
-        <p className="text-brand-subtle mb-6 min-h-[24px] text-center">{subtitle}</p>
-        
-        <div className="my-6">
-            <p className="text-lg text-brand-text">Total da Transação:</p>
-            <p className="text-4xl font-bold text-brand-accent">{total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+      <div className="bg-brand-secondary rounded-lg shadow-2xl border border-brand-border w-full max-w-4xl flex">
+        {/* Left Panel: Summary */}
+        <div className="w-1/3 p-6 border-r border-brand-border flex flex-col">
+            <h2 className="text-2xl font-bold text-white mb-6">Resumo da Venda</h2>
+            <div className="space-y-4 text-lg flex-grow">
+                <div className="flex justify-between"><span>Total:</span> <span className="font-semibold">{total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                <div className="flex justify-between text-green-400"><span>Pago:</span> <span className="font-semibold">{amountPaid.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                <div className="flex justify-between text-yellow-400"><span>Restante:</span> <span className="font-semibold">{amountRemaining > 0 ? amountRemaining.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00'}</span></div>
+                {change > 0 && <div className="flex justify-between text-blue-400"><span>Troco:</span> <span className="font-semibold">{change.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>}
+            </div>
+            
+            <div className="space-y-2">
+                <h3 className="text-lg font-semibold mb-2">Pagamentos Adicionados</h3>
+                <div className="space-y-1 max-h-32 overflow-y-auto text-sm">
+                {payments.map((p, i) => (
+                    <div key={i} className="flex justify-between bg-brand-primary/50 p-2 rounded-md">
+                        <span>{p.method}</span>
+                        <span className="font-mono">{p.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    </div>
+                ))}
+                {payments.length === 0 && <p className="text-brand-subtle text-xs text-center">Nenhum pagamento adicionado.</p>}
+                </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+                <button onClick={onCancel} className="w-full py-3 bg-red-600/80 text-white font-semibold rounded-md hover:bg-red-600 transition-colors">Cancelar</button>
+                <button onClick={handleFinalize} disabled={amountRemaining > 0 || isFinalizing} className="w-full py-3 bg-green-600 text-white font-semibold rounded-md hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-wait">
+                    {isFinalizing ? <Spinner className="w-6 h-6 mx-auto" /> : 'Finalizar Venda'}
+                </button>
+            </div>
         </div>
-
-        <div className="min-h-[208px] flex items-center justify-center w-full">
-           {renderContent()}
+        {/* Right Panel: Payment Methods */}
+        <div className="w-2/3 p-6">
+            <div className="flex justify-around mb-6">
+                {methods.map(m => (
+                    <button key={m.name} onClick={() => setSelectedMethod(m.name)} className={`flex flex-col items-center gap-2 p-3 rounded-lg w-24 ${selectedMethod === m.name ? 'bg-brand-accent text-white' : 'bg-brand-border/50 text-brand-subtle hover:bg-brand-border'}`}>
+                        {m.icon}
+                        <span>{m.name}</span>
+                    </button>
+                ))}
+            </div>
+            <div className="bg-brand-primary p-4 rounded-lg">
+                {renderPaymentMethodUI()}
+            </div>
         </div>
-
-        {signedXml && state !== 'error' && (
-             <details className="mt-4 text-left w-full">
-                <summary className="cursor-pointer text-sm text-brand-subtle hover:text-brand-text">Ver XML da NFC-e</summary>
-                <pre className="mt-2 p-2 text-xs bg-brand-primary border border-brand-border rounded-md max-h-32 overflow-auto">
-                    <code>{signedXml}</code>
-                </pre>
-            </details>
-        )}
-
-        {state === 'payment_confirmed' && (
-             <button 
-                onClick={onClose} 
-                className="mt-6 w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white font-semibold rounded-md hover:bg-green-500 transition-colors"
-            >
-                <CheckCircleIcon className="w-6 h-6" />
-                Concluir e Iniciar Nova Venda
-            </button>
-        )}
-
-        {(state === 'error' || state === 'awaiting_payment') && (
-            <button 
-                onClick={onClose} 
-                className="mt-6 w-full py-3 bg-red-600 text-white font-semibold rounded-md hover:bg-red-500 transition-colors"
-            >
-                {state === 'error' ? 'Fechar' : 'Cancelar Venda'}
-            </button>
-        )}
       </div>
     </div>
   );
 };
 
-export default TransactionModal;
+export default PaymentModal;

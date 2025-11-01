@@ -7,6 +7,7 @@ interface Field {
   required?: boolean;
   step?: string;
   nested?: boolean;
+  options?: { value: string; label: string }[];
 }
 
 interface EntityFormModalProps {
@@ -22,29 +23,23 @@ const EntityFormModal: React.FC<EntityFormModalProps> = ({ title, fields, initia
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (initialData) {
-      // Flatten nested data for form state
-      const flatData = fields.reduce((acc, field) => {
-        if (field.nested && field.name.includes('.')) {
-          const [parent, child] = field.name.split('.');
-          acc[field.name] = initialData[parent]?.[child] || '';
-        } else {
-          acc[field.name] = initialData[field.name] || '';
+    const initialFormState = fields.reduce((acc, field) => {
+        let value = '';
+        if (initialData) {
+            if (field.nested && field.name.includes('.')) {
+                const [parent, child] = field.name.split('.');
+                value = initialData[parent]?.[child] || '';
+            } else {
+                value = initialData[field.name] || '';
+            }
         }
+        acc[field.name] = value;
         return acc;
-      }, {} as any);
-      setFormData(flatData);
-    } else {
-      // Initialize with empty strings
-      const emptyData = fields.reduce((acc, field) => {
-        acc[field.name] = '';
-        return acc;
-      }, {} as any);
-      setFormData(emptyData);
-    }
+    }, {} as any);
+    setFormData(initialFormState);
   }, [initialData, fields]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev: any) => ({ ...prev, [name]: value }));
   };
@@ -69,6 +64,38 @@ const EntityFormModal: React.FC<EntityFormModalProps> = ({ title, fields, initia
     setIsLoading(false);
   };
 
+  const renderField = (field: Field) => {
+    if (field.type === 'select') {
+        return (
+             <select
+                name={field.name}
+                id={field.name}
+                value={formData[field.name] || ''}
+                onChange={handleChange}
+                required={field.required}
+                className="w-full bg-brand-primary border border-brand-border text-brand-text rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent"
+             >
+                <option value="" disabled>Selecione...</option>
+                {field.options?.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+            </select>
+        );
+    }
+    return (
+        <input
+            type={field.type}
+            name={field.name}
+            id={field.name}
+            value={formData[field.name] || ''}
+            onChange={handleChange}
+            required={field.required}
+            step={field.step}
+            className="w-full bg-brand-primary border border-brand-border text-brand-text rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent"
+        />
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-brand-secondary rounded-lg shadow-2xl p-6 border border-brand-border w-full max-w-lg flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -80,16 +107,7 @@ const EntityFormModal: React.FC<EntityFormModalProps> = ({ title, fields, initia
           {fields.map((field) => (
             <div key={field.name}>
               <label htmlFor={field.name} className="block text-sm font-medium text-brand-subtle mb-1">{field.label}</label>
-              <input
-                type={field.type}
-                name={field.name}
-                id={field.name}
-                value={formData[field.name] || ''}
-                onChange={handleChange}
-                required={field.required}
-                step={field.step}
-                className="w-full bg-brand-primary border border-brand-border text-brand-text rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent"
-              />
+              {renderField(field)}
             </div>
           ))}
           <div className="pt-4 flex justify-end gap-4">

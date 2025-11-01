@@ -22,7 +22,7 @@ export interface Customer {
 }
 
 export interface Supplier {
-    id: string;
+    id:string;
     name: string;
     contactPerson: string;
     email: string;
@@ -35,13 +35,22 @@ export interface CartItem extends Product {
   quantity: number;
 }
 
+export type PaymentMethod = 'Dinheiro' | 'PIX' | 'Credito' | 'Debito';
+
+export interface Payment {
+    method: PaymentMethod;
+    amount: number;
+}
+
+
 export interface SaleRecord {
   id: string;
   timestamp: string;
   items: CartItem[];
   total: number;
+  payments: Payment[];
+  changeGiven: number;
   nfceXml: string;
-  pixTransactionId: string;
 }
 
 export interface User {
@@ -61,18 +70,18 @@ export interface AccountTransaction {
     type: 'payable' | 'receivable';
 }
 
+// === Fiscal Types (NFC-e) ===
+
+// Fix: Add missing NcmCode and CfopCode type definitions.
 export interface NcmCode {
-    code: string;
-    description: string;
+  code: string;
+  description: string;
 }
 
 export interface CfopCode {
-    code: string;
-    description: string;
+  code: string;
+  description: string;
 }
-
-
-// === Fiscal Types (NFC-e) ===
 
 export interface Emitente {
   CNPJ: string;
@@ -279,4 +288,39 @@ export interface NFeImportResult {
       isNew: boolean;
     }[];
   };
+}
+
+// === Cash Shift Types ===
+export interface ShiftMovement {
+    id: string;
+    timestamp: string;
+    type: 'Suprimento' | 'Sangria';
+    amount: number;
+    reason: string;
+    userId: string; // User who performed the action
+}
+
+export interface CashShift {
+    id: string;
+    status: 'Aberto' | 'Fechado';
+    userId: string;
+    userName: string;
+    openedAt: string;
+    closedAt: string | null;
+
+    // Balances
+    openingBalance: number; // Suprimento inicial
+    closingBalance: number | null; // Valor contado no fechamento
+    expectedBalance: number | null; // Calculado no fechamento
+    balanceDifference: number | null; // Quebra/Sobra
+
+    // Aggregates
+    totalSales: number;
+    totalSuprimentos: number;
+    totalSangrias: number;
+    
+    // Details
+    paymentTotals: Record<PaymentMethod, number>;
+    movements: ShiftMovement[];
+    sales: SaleRecord[];
 }

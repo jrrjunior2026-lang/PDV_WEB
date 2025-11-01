@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { Product, InventoryCountItem, InventoryReport } from '../../types';
 import * as inventoryApi from '../../api/inventory';
@@ -19,10 +18,11 @@ const InventoryCountModal: React.FC<InventoryCountModalProps> = ({ products, onC
 
     const handleSubmit = async () => {
         setIsSubmitting(true);
-        const countItems: InventoryCountItem[] = Object.entries(counts)
-            .map(([productId, countedQuantityStr]) => ({
+        // FIX: Refactored to use Object.keys to avoid potential type inference issues with Object.entries.
+        const countItems: InventoryCountItem[] = Object.keys(counts)
+            .map((productId) => ({
                 productId,
-                countedQuantity: parseInt(countedQuantityStr, 10) || 0,
+                countedQuantity: parseInt(counts[productId], 10) || 0,
             }));
         
         // Ensure all products are included, even if not touched

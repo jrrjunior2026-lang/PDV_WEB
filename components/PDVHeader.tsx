@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 
 const ClockIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -47,10 +46,15 @@ interface PDVHeaderProps {
     isSyncing: boolean;
     onOpenHomologationPanel: () => void;
     onOpenERP: () => void;
+    shiftStatus: 'Aberto' | 'Fechado';
+    onCloseShift: () => void;
+    onSuprimento: () => void;
+    onSangria: () => void;
 }
 
-const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP }) => {
+const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP, shiftStatus, onCloseShift, onSuprimento, onSangria }) => {
     const [time, setTime] = useState(new Date());
+    const isShiftOpen = shiftStatus === 'Aberto';
 
     useEffect(() => {
         const timerId = setInterval(() => setTime(new Date()), 1000);
@@ -80,18 +84,29 @@ const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pending
 
     return (
         <header className="flex items-center justify-between p-4 bg-brand-secondary border-b border-brand-border flex-shrink-0">
-            <div>
-                <h1 className="text-xl font-bold text-white">PDV Fiscal</h1>
-                <p className="text-xs text-brand-subtle">Frente de Caixa</p>
+            <div className="flex items-center gap-4">
+                 <div>
+                    <h1 className="text-xl font-bold text-white">PDV Fiscal</h1>
+                    <p className="text-xs text-brand-subtle">Frente de Caixa</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full ${isShiftOpen ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                    <span className={`text-sm font-semibold ${isShiftOpen ? 'text-green-400' : 'text-red-400'}`}>Caixa {shiftStatus}</span>
+                </div>
             </div>
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                    <button onClick={onSuprimento} disabled={!isShiftOpen} className="text-sm bg-blue-600/50 text-blue-300 px-3 py-1.5 rounded-md hover:bg-blue-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Suprimento</button>
+                    <button onClick={onSangria} disabled={!isShiftOpen} className="text-sm bg-yellow-600/50 text-yellow-300 px-3 py-1.5 rounded-md hover:bg-yellow-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Sangria</button>
+                    <button onClick={onCloseShift} disabled={!isShiftOpen} className="text-sm bg-red-600/50 text-red-300 px-3 py-1.5 rounded-md hover:bg-red-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Fechar Caixa</button>
+                </div>
+                <div className="w-px h-6 bg-brand-border"></div>
                 <button 
                   onClick={onOpenERP}
                   className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
                   title="Painel ERP"
                 >
                     <CogIcon className="w-6 h-6" />
-                    <span className="text-sm font-semibold hidden md:inline">Painel ERP</span>
                 </button>
                  <button 
                   onClick={onOpenHomologationPanel}
@@ -99,12 +114,11 @@ const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pending
                   title="Painel de Homologação"
                 >
                     <ClipboardDocumentCheckIcon className="w-6 h-6" />
-                    <span className="text-sm font-semibold hidden md:inline">Homologação</span>
                 </button>
                 {renderSyncStatus()}
                 <div className="flex items-center gap-2 text-brand-subtle">
                     <UserIcon className="w-5 h-5" />
-                    <span className="text-sm">Usuário: Caixa 01</span>
+                    <span className="text-sm">Caixa 01</span>
                 </div>
                 <div className="flex items-center gap-2 text-brand-subtle">
                     <ClockIcon className="w-5 h-5" />

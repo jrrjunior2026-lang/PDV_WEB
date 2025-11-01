@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import type { Product, SaleRecord, User, AccountTransaction, NcmCode, CfopCode, StockLevel, StockMovement, Customer, Supplier, NFeImportResult } from '../../types';
+import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift } from '../../types';
 import ProductManagement from './ProductManagement';
 import SalesHistory from './SalesHistory';
 import UserManagement from './UserManagement';
 import Financials from './Financials';
-import FiscalManagement from './FiscalManagement';
 import InventoryManagement from './InventoryManagement';
 import CustomerManagement from './CustomerManagement';
 import SupplierManagement from './SupplierManagement';
+import ShiftHistory from './ShiftHistory';
 
 const ShoppingBagIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -50,12 +50,6 @@ const BanknotesIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const DocumentTextIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-    </svg>
-);
-
 const ArchiveBoxIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
@@ -67,6 +61,14 @@ const ArrowUturnLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
   </svg>
 );
+
+const BuildingLibraryIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6M3 9v11.25a1.5 1.5 0 0 0 1.5 1.5h15a1.5 1.5 0 0 0 1.5-1.5V9M3 9h18" />
+  </svg>
+);
+
+
 
 interface ERPDashboardProps {
   products: Product[];
@@ -85,10 +87,14 @@ interface ERPDashboardProps {
   onDeleteSupplier: (supplierId: string) => Promise<void>;
 
   salesHistory: SaleRecord[];
+  shiftHistory: CashShift[];
+  
   users: User[];
+  onAddUser: (user: Omit<User, 'id'>) => Promise<void>;
+  onUpdateUser: (user: User) => Promise<void>;
+  onDeleteUser: (userId: string) => Promise<void>;
+
   financials: AccountTransaction[];
-  ncmCodes: NcmCode[];
-  cfopCodes: CfopCode[];
   stockLevels: StockLevel[];
   stockMovements: StockMovement[];
   onRefreshInventory: () => Promise<void>;
@@ -96,7 +102,7 @@ interface ERPDashboardProps {
   onBackToPDV: () => void;
 }
 
-type ERPView = 'products' | 'customers' | 'suppliers' | 'sales' | 'users' | 'financials' | 'fiscal' | 'inventory';
+type ERPView = 'products' | 'customers' | 'suppliers' | 'sales' | 'shifts' | 'users' | 'financials' | 'inventory';
 
 const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   const [activeView, setActiveView] = useState<ERPView>('inventory');
@@ -126,6 +132,8 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
         />;
       case 'sales':
         return <SalesHistory sales={props.salesHistory} />;
+      case 'shifts':
+          return <ShiftHistory shifts={props.shiftHistory} />;
       case 'inventory':
         return <InventoryManagement 
             stockLevels={props.stockLevels} 
@@ -135,11 +143,14 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
             onNFeImport={props.onNFeImport}
         />;
       case 'users':
-        return <UserManagement users={props.users} />;
+        return <UserManagement 
+            users={props.users} 
+            onAdd={props.onAddUser}
+            onUpdate={props.onUpdateUser}
+            onDelete={props.onDeleteUser}
+        />;
       case 'financials':
         return <Financials transactions={props.financials} />;
-      case 'fiscal':
-        return <FiscalManagement ncmCodes={props.ncmCodes} cfopCodes={props.cfopCodes} />;
       default:
         return null;
     }
@@ -182,6 +193,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
               <h3 className="px-3 text-xs font-semibold text-brand-subtle uppercase tracking-wider mb-2 mt-4">Operacional</h3>
               <ul className="space-y-1">
                 <NavItem label="Estoque" view="inventory" icon={<ArchiveBoxIcon className="w-6 h-6" />} />
+                <NavItem label="Turnos de Caixa" view="shifts" icon={<BuildingLibraryIcon className="w-6 h-6" />} />
                 <NavItem label="Relatórios de Vendas" view="sales" icon={<DocumentChartBarIcon className="w-6 h-6" />} />
                 <NavItem label="Financeiro" view="financials" icon={<BanknotesIcon className="w-6 h-6" />} />
               </ul>
@@ -189,7 +201,6 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
              <li>
               <h3 className="px-3 text-xs font-semibold text-brand-subtle uppercase tracking-wider mb-2 mt-4">Sistema</h3>
               <ul className="space-y-1">
-                <NavItem label="Cadastro Fiscal" view="fiscal" icon={<DocumentTextIcon className="w-6 h-6" />} />
                 <NavItem label="Usuários" view="users" icon={<UsersIcon className="w-6 h-6" />} />
               </ul>
             </li>

@@ -1,7 +1,4 @@
-
-import type { CartItem, NFCe, Emitente, ProdutoNFCe, TotalNFCe, PixCharge, PixWebhookPayload } from '../types';
-import type { TransactionState } from '../App';
-import { v4 as uuidv4 } from 'uuid';
+import type { CartItem, NFCe, Emitente, ProdutoNFCe, TotalNFCe, Payment, PaymentMethod, PagamentoNFCe } from '../types';
 
 // --- FISCAL (NFC-e) LOGIC ---
 
@@ -14,7 +11,7 @@ const MOCK_EMITENTE: Emitente = {
   IE: '111111111111', CRT: '1',
 };
 
-function createNFCeObject(cart: CartItem[], total: number): NFCe {
+function createNFCeObject(cart: CartItem[], total: number, payments: Payment[]): NFCe {
   const produtos: ProdutoNFCe[] = cart.map(item => {
     const vProd = item.price * item.quantity;
     return {
@@ -35,6 +32,19 @@ function createNFCeObject(cart: CartItem[], total: number): NFCe {
       vII: 0.00, vIPI: 0.00, vIPIDevol: 0.00, vPIS: 0.00, vCOFINS: 0.00, vOutro: 0.00,
       vNF: total, vTotTrib: vTotTribGlobal
   };
+
+  const paymentMethodMap: Record<PaymentMethod, string> = {
+      'Dinheiro': '01',
+      'Credito': '03',
+      'Debito': '04',
+      'PIX': '17',
+  };
+
+  const detPag: PagamentoNFCe[] = payments.map(p => ({
+      tpag: paymentMethodMap[p.method],
+      vPag: p.amount,
+  }));
+
   return {
     infNFe: {
       versao: '4.00',
@@ -45,7 +55,7 @@ function createNFCeObject(cart: CartItem[], total: number): NFCe {
         cDV: 1, tpAmb: 2, finNFe: 1, indFinal: 1, indPres: 1, procEmi: 0, verProc: '1.0.0',
       },
       emit: MOCK_EMITENTE, det: produtos, total: { ICMSTot: icmsTot },
-      pag: { detPag: [{ tpag: '01', vPag: total }] },
+      pag: { detPag },
     },
   };
 }
@@ -61,9 +71,9 @@ function objectToXml(obj: any, indent = ''): string {
     }).join('\n');
 }
 
-const generateNFCeXml = (cart: CartItem[], total: number): Promise<string> => new Promise(resolve => {
+const generateNFCeXml = (cart: CartItem[], total: number, payments: Payment[]): Promise<string> => new Promise(resolve => {
   setTimeout(() => {
-    const nfceObject = createNFCeObject(cart, total);
+    const nfceObject = createNFCeObject(cart, total, payments);
     resolve(`<?xml version="1.0" encoding="UTF-8"?>\n<NFe xmlns="http://www.portalfiscal.inf.br/nfe">\n${objectToXml(nfceObject, '  ')}</NFe>`);
   }, 1000);
 });
@@ -75,52 +85,15 @@ const signNFCeXml = (xml: string): Promise<string> => new Promise(resolve => {
   }, 800);
 });
 
-// --- PIX LOGIC ---
-
-const generateDynamicPix = (total: number, transactionId: string): Promise<PixCharge> => new Promise(resolve => {
-  setTimeout(() => {
-    const charge: PixCharge = {
-      transactionId,
-      qrCodeData: `00020126580014br.gov.bcb.pix0136${transactionId}5204000053039865802BR5913Empresa Teste6009Sao Paulo62070503***6304E${Math.floor(Math.random() * 9000 + 1000)}`,
-      amount: total,
-      createdAt: new Date(),
-    };
-    console.log(`[API_LOG] PIX charge created for R$${total.toFixed(2)}. TxID: ${transactionId}`);
-    resolve(charge);
-  }, 1000);
-});
-
-export const listenForPixPayment = (
-    transactionId: string, 
-    onPaymentConfirmed: (payload: PixWebhookPayload) => void
-): (() => void) => {
-    const paymentDelay = Math.random() * 5000 + 3000; 
-    const timeoutId = setTimeout(() => {
-        const payload: PixWebhookPayload = { transactionId, status: 'PAID', paidAt: new Date(), amount: 0 };
-        console.log(`[API_LOG] Webhook received: Payment confirmed for TxID ${transactionId}.`);
-        onPaymentConfirmed(payload);
-    }, paymentDelay);
-    return () => clearTimeout(timeoutId);
-};
-
 
 // --- ORCHESTRATION ---
 
-export const processSaleTransaction = async (
+export const generateAndSignNfce = async (
     cart: CartItem[], 
     total: number,
-    setState: (state: TransactionState) => void
-): Promise<{ signedXml: string, pixCharge: PixCharge, transactionId: string }> => {
-    const transactionId = uuidv4();
-
-    setState('generating_xml');
-    const xml = await generateNFCeXml(cart, total);
-    
-    setState('signing_xml');
+    payments: Payment[],
+): Promise<string> => {
+    const xml = await generateNFCeXml(cart, total, payments);
     const signedXml = await signNFCeXml(xml);
-    
-    setState('generating_pix');
-    const pixCharge = await generateDynamicPix(total, transactionId);
-
-    return { signedXml, pixCharge, transactionId };
+    return signedXml;
 };
