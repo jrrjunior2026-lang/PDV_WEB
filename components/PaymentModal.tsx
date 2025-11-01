@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Payment, PaymentMethod } from '../types';
+import type { Payment, PaymentMethod, Customer } from '../types';
 
 const WalletIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3.375m-3.375 2.25h10.5m0 0a9 9 0 0 0-9-9m9 9a9 9 0 0 1-9-9m9 9v3.75a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V8.25a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v3.75" /></svg>
@@ -10,6 +10,10 @@ const QrCodeIcon = (props: React.SVGProps<SVGSVGElement>) => (
 const CreditCardIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3.375m-3.375 2.25h10.5m0 0a9 9 0 0 0-9-9m9 9a9 9 0 0 1-9-9m9 9v3.75a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V8.25a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v3.75" /></svg>
 );
+const UserCircleIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+);
+
 const Spinner = (props: React.SVGProps<SVGSVGElement>) => (
     <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" {...props}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
 );
@@ -21,11 +25,12 @@ interface PaymentModalProps {
   total: number;
   onFinalize: (payments: Payment[], changeGiven: number) => void;
   onCancel: () => void;
+  selectedCustomer: Customer | null;
 }
 
 type CardState = 'idle' | 'processing' | 'approved' | 'failed';
 
-const PaymentModal: React.FC<PaymentModalProps> = ({ total, onFinalize, onCancel }) => {
+const PaymentModal: React.FC<PaymentModalProps> = ({ total, onFinalize, onCancel, selectedCustomer }) => {
     const [payments, setPayments] = useState<Payment[]>([]);
     const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('Dinheiro');
     const [paymentValue, setPaymentValue] = useState('');
@@ -57,7 +62,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ total, onFinalize, onCancel
             if (!isNaN(received) && received >= amount) {
                 amount = Math.min(amount, amountRemaining);
             } else {
-                // Handle case where received amount is less than payment amount
                 return;
             }
         }
@@ -128,14 +132,26 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ total, onFinalize, onCancel
                        <button onClick={handleAddPayment} className="w-full py-2 bg-green-600 rounded-md text-white font-semibold hover:bg-green-500">Confirmar Pagamento PIX</button>
                     </div>
                 );
+            case 'Fiado':
+                const availableCredit = selectedCustomer ? selectedCustomer.creditLimit - selectedCustomer.currentBalance : 0;
+                return (
+                    <div className="text-center p-4 flex flex-col items-center justify-center">
+                        <UserCircleIcon className="w-16 h-16 text-brand-text mb-4" />
+                        <p className="text-sm text-brand-subtle mb-1">Registrar venda para:</p>
+                        <p className="font-bold text-lg text-white mb-2">{selectedCustomer?.name}</p>
+                        <p className="text-xs text-brand-subtle">Limite disponível: {availableCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                        <button onClick={handleAddPayment} className="w-full mt-4 py-2 bg-purple-600 rounded-md text-white font-semibold hover:bg-purple-500">Confirmar Venda a Crédito</button>
+                    </div>
+                );
         }
     }
     
-    const methods: { name: PaymentMethod, icon: React.ReactNode }[] = [
+    const methods: { name: PaymentMethod, icon: React.ReactNode, disabled?: boolean }[] = [
         { name: 'Dinheiro', icon: <WalletIcon className="w-6 h-6" /> },
         { name: 'PIX', icon: <QrCodeIcon className="w-6 h-6" /> },
         { name: 'Debito', icon: <CreditCardIcon className="w-6 h-6" /> },
         { name: 'Credito', icon: <CreditCardIcon className="w-6 h-6" /> },
+        { name: 'Fiado', icon: <UserCircleIcon className="w-6 h-6" />, disabled: !selectedCustomer },
     ];
   
   return (
@@ -175,7 +191,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ total, onFinalize, onCancel
         <div className="w-2/3 p-6">
             <div className="flex justify-around mb-6">
                 {methods.map(m => (
-                    <button key={m.name} onClick={() => setSelectedMethod(m.name)} className={`flex flex-col items-center gap-2 p-3 rounded-lg w-24 ${selectedMethod === m.name ? 'bg-brand-accent text-white' : 'bg-brand-border/50 text-brand-subtle hover:bg-brand-border'}`}>
+                    <button 
+                        key={m.name} 
+                        onClick={() => setSelectedMethod(m.name)} 
+                        disabled={m.disabled}
+                        className={`flex flex-col items-center gap-2 p-3 rounded-lg w-24 transition-colors ${selectedMethod === m.name ? 'bg-brand-accent text-white' : 'bg-brand-border/50 text-brand-subtle hover:bg-brand-border disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    >
                         {m.icon}
                         <span>{m.name}</span>
                     </button>

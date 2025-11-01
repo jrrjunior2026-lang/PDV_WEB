@@ -11,6 +11,7 @@ const permissions: Record<UserRole, Permission[]> = {
         'manage_inventory',
         'manage_financials',
         'manage_users',
+        'manage_purchasing',
     ],
     Caixa: [], // Caixa only has access to PDV, not any specific ERP modules
 };

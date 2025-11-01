@@ -21,6 +21,8 @@ export interface Customer {
     cpf: string;
     loyaltyPoints: number;
     createdAt: string;
+    creditLimit: number;
+    currentBalance: number;
 }
 
 export interface Supplier {
@@ -41,7 +43,7 @@ export interface CartItem extends Product {
   };
 }
 
-export type PaymentMethod = 'Dinheiro' | 'PIX' | 'Credito' | 'Debito';
+export type PaymentMethod = 'Dinheiro' | 'PIX' | 'Credito' | 'Debito' | 'Fiado';
 
 export interface Payment {
     method: PaymentMethod;
@@ -82,6 +84,7 @@ export interface AccountTransaction {
     dueDate: string;
     status: 'Pendente' | 'Pago' | 'Atrasado';
     type: 'payable' | 'receivable';
+    customerId?: string;
 }
 
 export type Permission = 
@@ -92,7 +95,8 @@ export type Permission =
   | 'view_reports'
   | 'manage_inventory'
   | 'manage_financials'
-  | 'manage_users';
+  | 'manage_users'
+  | 'manage_purchasing';
 
 
 // === Fiscal Types (NFC-e) ===
@@ -274,7 +278,7 @@ export interface StockMovement {
   timestamp: string;
   productId: string;
   productName: string;
-  type: 'Venda' | 'Ajuste de Inventário' | 'Entrada Inicial' | 'Entrada (NF-e)';
+  type: 'Venda' | 'Ajuste de Inventário' | 'Entrada Inicial' | 'Entrada (NF-e)' | 'Entrada (Compra)';
   quantityChange: number;
   reason: string; // e.g., Sale ID or "Inventory Count"
 }
@@ -349,4 +353,23 @@ export interface CashShift {
     paymentTotals: Record<PaymentMethod, number>;
     movements: ShiftMovement[];
     sales: SaleRecord[];
+}
+
+// === Purchasing Types ===
+export interface PurchaseOrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  cost: number; // cost per unit
+}
+
+export interface PurchaseOrder {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  items: PurchaseOrderItem[];
+  totalCost: number;
+  status: 'Pendente' | 'Recebido' | 'Cancelado';
+  createdAt: string;
+  receivedAt?: string;
 }

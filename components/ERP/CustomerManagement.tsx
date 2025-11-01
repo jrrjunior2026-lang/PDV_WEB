@@ -2,17 +2,20 @@ import React, { useState } from 'react';
 import type { Customer } from '../../types';
 import EntityFormModal from './EntityFormModal';
 import ConfirmationModal from './ConfirmationModal';
+import SettleDebtModal from './SettleDebtModal';
 
 interface CustomerManagementProps {
   customers: Customer[];
-  onAdd: (customer: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt'>) => Promise<void>;
+  onAdd: (customer: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt' | 'creditLimit' | 'currentBalance'>) => Promise<void>;
   onUpdate: (customer: Customer) => Promise<void>;
   onDelete: (customerId: string) => Promise<void>;
+  onSettleDebt: (customerId: string) => Promise<void>;
 }
 
-const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAdd, onUpdate, onDelete }) => {
+const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAdd, onUpdate, onDelete, onSettleDebt }) => {
   const [isFormOpen, setFormOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
+  const [isSettleDebtModalOpen, setSettleDebtModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   const handleOpenAdd = () => {
@@ -30,6 +33,11 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAd
     setConfirmOpen(true);
   };
 
+  const handleOpenSettleDebt = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setSettleDebtModalOpen(true);
+  };
+
   const handleConfirmDelete = async () => {
     if (selectedCustomer) {
       await onDelete(selectedCustomer.id);
@@ -37,10 +45,18 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAd
       setSelectedCustomer(null);
     }
   };
+  
+  const handleConfirmSettleDebt = async () => {
+      if (selectedCustomer) {
+          await onSettleDebt(selectedCustomer.id);
+          setSettleDebtModalOpen(false);
+          setSelectedCustomer(null);
+      }
+  }
 
   const handleSave = async (data: any) => {
     if (selectedCustomer) {
-      await onUpdate({ ...selectedCustomer, ...data });
+      await onUpdate({ ...selectedCustomer, ...data, creditLimit: parseFloat(data.creditLimit) });
     } else {
       await onAdd(data);
     }
@@ -53,6 +69,7 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAd
     { name: 'email', label: 'Email', type: 'email', required: true },
     { name: 'phone', label: 'Telefone', type: 'text', required: true },
     { name: 'cpf', label: 'CPF', type: 'text', required: true },
+    { name: 'creditLimit', label: 'Limite de Crédito (R$)', type: 'number', required: true, step: '0.01' },
   ];
 
   return (
@@ -72,20 +89,33 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAd
             <tr>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Nome</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Contato</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">CPF</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Saldo Devedor</th>
               <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-brand-subtle uppercase tracking-wider">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {customers.map((customer) => (
               <tr key={customer.id} className="hover:bg-brand-border/30">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{customer.name}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                    <div>{customer.name}</div>
+                    <div className="text-xs text-brand-subtle font-mono">{customer.cpf}</div>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-brand-text">{customer.email}</div>
                   <div className="text-sm text-brand-subtle">{customer.phone}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-text font-mono">{customer.cpf}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                    <div className={`text-sm font-semibold ${customer.currentBalance > 0 ? 'text-red-400' : 'text-brand-text'}`}>
+                        {customer.currentBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </div>
+                    <div className="text-xs text-brand-subtle">
+                        Limite: {customer.creditLimit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </div>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                  {customer.currentBalance > 0 && (
+                     <button onClick={() => handleOpenSettleDebt(customer)} className="text-green-400 hover:text-green-300 mr-4">Receber Pgto.</button>
+                  )}
                   <button onClick={() => handleOpenEdit(customer)} className="text-indigo-400 hover:text-indigo-300 mr-4">Editar</button>
                   <button onClick={() => handleOpenDelete(customer)} className="text-red-500 hover:text-red-400">Excluir</button>
                 </td>
@@ -110,6 +140,13 @@ const CustomerManagement: React.FC<CustomerManagementProps> = ({ customers, onAd
           onConfirm={handleConfirmDelete}
           onClose={() => setConfirmOpen(false)}
         />
+      )}
+      {isSettleDebtModalOpen && selectedCustomer && (
+          <SettleDebtModal
+            customer={selectedCustomer}
+            onConfirm={handleConfirmSettleDebt}
+            onClose={() => setSettleDebtModalOpen(false)}
+          />
       )}
     </div>
   );

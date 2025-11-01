@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { StockLevel, StockMovement, SaleRecord, InventoryCountItem, InventoryReport } from '../types';
+import type { StockLevel, StockMovement, SaleRecord, InventoryCountItem, InventoryReport, PurchaseOrder } from '../types';
 // FIX: The imported variable name has been corrected to match the export from products.ts.
 import { MOCK_PRODUCTS } from './products';
 
@@ -67,6 +67,39 @@ export const getStockLevels = (): Promise<StockLevel[]> => {
 
 export const getStockMovements = (): Promise<StockMovement[]> => {
   return Promise.resolve(getFromStorage<StockMovement[]>(STOCK_MOVEMENTS_KEY, []));
+};
+
+export const processPurchaseOrderReceival = (order: PurchaseOrder): Promise<void> => {
+    return new Promise(resolve => {
+        const levels = getFromStorage<StockLevel[]>(STOCK_LEVELS_KEY, []);
+        const movements = getFromStorage<StockMovement[]>(STOCK_MOVEMENTS_KEY, []);
+        const timestamp = new Date().toISOString();
+
+        order.items.forEach(item => {
+            let stockItem = levels.find(l => l.productId === item.productId);
+            if (stockItem) {
+                stockItem.quantity += item.quantity;
+            } else {
+                stockItem = { productId: item.productId, productName: item.productName, quantity: item.quantity };
+                levels.push(stockItem);
+            }
+
+            movements.push({
+                id: uuidv4(),
+                timestamp,
+                productId: item.productId,
+                productName: item.productName,
+                type: 'Entrada (Compra)',
+                quantityChange: item.quantity,
+                reason: `OC #${order.id.substring(0, 8)}`,
+            });
+        });
+        
+        setToStorage(STOCK_LEVELS_KEY, levels);
+        setToStorage(STOCK_MOVEMENTS_KEY, movements);
+        console.log(`[API_LOG] Stock entry from Purchase Order ${order.id} processed.`);
+        resolve();
+    });
 };
 
 export const recordStockEntry = (

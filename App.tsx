@@ -1,7 +1,9 @@
 
+
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment } from './types';
+import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder } from './types';
 import PDVHeader from './components/PDVHeader';
 import ProductGrid from './components/ProductGrid';
 import CartDisplay from './components/CartDisplay';
@@ -27,8 +29,9 @@ import * as inventoryApi from './api/inventory';
 import * as nfeProcessor from './api/nfeProcessor';
 import * as userApi from './api/users';
 import * as authApi from './api/auth';
-import { getFinancials } from './api/financials';
+import * as financialApi from './api/financials';
 import * as cashRegisterApi from './api/cashRegister';
+import * as purchasingApi from './api/purchasing';
 import * as geminiService from './services/geminiService';
 
 
@@ -51,6 +54,7 @@ const App: React.FC = () => {
   const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [shiftHistory, setShiftHistory] = useState<CashShift[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
   // PDV State
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -113,9 +117,19 @@ const App: React.FC = () => {
     setUsers(userList);
   }, []);
 
+  const refreshFinancials = useCallback(async () => {
+    const financialData = await financialApi.getFinancials();
+    setFinancials(financialData);
+  }, []);
+
   const refreshShiftHistory = useCallback(async () => {
       const history = await cashRegisterApi.getShiftHistory();
       setShiftHistory(history);
+  }, []);
+  
+  const refreshPurchaseOrders = useCallback(async () => {
+    const orders = await purchasingApi.getPurchaseOrders();
+    setPurchaseOrders(orders);
   }, []);
 
 
@@ -124,24 +138,24 @@ const App: React.FC = () => {
     const loadInitialData = async () => {
       // Simulate user login
       // Change to 'user-1' to test 'Admin' role permissions
-      const user = await authApi.getCurrentUser('user-2'); 
+      const user = await authApi.getCurrentUser('user-1'); 
       setCurrentUser(user);
 
       const activeShift = await cashRegisterApi.getCurrentShift();
       setCurrentShift(activeShift);
       if (!activeShift) setShiftOpenModalVisible(true);
 
-      const [ prods, custs, supps, queuedSales, history, userList, financialData, sLevels, sMovements, shifts ] = await Promise.all([
+      const [ prods, custs, supps, queuedSales, history, userList, financialData, sLevels, sMovements, shifts, pOrders ] = await Promise.all([
         productApi.getProducts(), customerApi.getCustomers(), supplierApi.getSuppliers(),
         syncApi.getQueuedSales(), syncApi.getSalesHistory(), userApi.getUsers(),
-        getFinancials(), inventoryApi.getStockLevels(), inventoryApi.getStockMovements(),
-        cashRegisterApi.getShiftHistory()
+        financialApi.getFinancials(), inventoryApi.getStockLevels(), inventoryApi.getStockMovements(),
+        cashRegisterApi.getShiftHistory(), purchasingApi.getPurchaseOrders()
       ]);
 
       setProducts(prods); setCustomers(custs); setSuppliers(supps);
       setPendingSalesCount(queuedSales.length); setSalesHistory(history);
       setUsers(userList); setFinancials(financialData); setStockLevels(sLevels);
-      setStockMovements(sMovements); setShiftHistory(shifts);
+      setStockMovements(sMovements); setShiftHistory(shifts); setPurchaseOrders(pOrders);
     };
     loadInitialData();
   }, []);
@@ -254,37 +268,48 @@ const App: React.FC = () => {
   const handleFinalizeSale = useCallback(async (payments: Payment[], changeGiven: number) => {
     try {
         const totalDiscountValue = promotionalDiscount + loyaltyDiscountAmount;
+        const saleId = uuidv4();
+
+        // Credit Sale ("Fiado") Logic
+        if (selectedCustomer && payments.some(p => p.method === 'Fiado')) {
+            const creditAmount = payments.find(p => p.method === 'Fiado')?.amount || 0;
+            const availableCredit = selectedCustomer.creditLimit - selectedCustomer.currentBalance;
+            if (creditAmount > availableCredit) {
+                // In a real app, show a proper UI alert
+                console.error("Venda a crédito excede o limite do cliente!");
+                alert(`Erro: Venda de ${creditAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} excede o limite de crédito disponível de ${availableCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`);
+                return;
+            }
+            await customerApi.updateCustomerBalance(selectedCustomer.id, creditAmount);
+            // FIX: The `addReceivable` function generates its own ID, so we remove the `id` property from the call to match the expected `Omit<AccountTransaction, 'id'>` type.
+            await financialApi.addReceivable({
+                customerId: selectedCustomer.id,
+                description: `Venda a crédito #${saleId.substring(0, 8)}`,
+                amount: creditAmount,
+                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days
+                status: 'Pendente',
+                type: 'receivable',
+            });
+            await refreshFinancials();
+        }
+
         const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscountValue, payments);
 
         let pointsEarned = 0;
         if (selectedCustomer) {
-            // Earn points
-            pointsEarned = Math.floor(total / 10); // 1 point for every R$10
-            
-            // Redeem points
+            pointsEarned = Math.floor(total / 10);
             const pointsChange = pointsEarned - loyaltyDiscount.points;
-
             if (pointsChange !== 0) {
-                const updatedCustomer = await customerApi.updateCustomerPoints(selectedCustomer.id, pointsChange);
-                setSelectedCustomer(updatedCustomer); // Refresh customer data in UI
-                refreshCustomers();
+                await customerApi.updateCustomerPoints(selectedCustomer.id, pointsChange);
             }
         }
 
         const saleRecord: SaleRecord = {
-            id: uuidv4(),
-            timestamp: new Date().toISOString(),
-            items: cart,
-            total,
-            payments,
-            changeGiven,
-            nfceXml: signedXml,
-            customerId: selectedCustomer?.id,
-            customerName: selectedCustomer?.name,
-            totalDiscount: totalDiscountValue,
-            loyaltyPointsEarned: pointsEarned,
-            loyaltyPointsRedeemed: loyaltyDiscount.points,
-            loyaltyDiscountAmount: loyaltyDiscount.amount,
+            id: saleId, timestamp: new Date().toISOString(), items: cart,
+            total, payments, changeGiven, nfceXml: signedXml,
+            customerId: selectedCustomer?.id, customerName: selectedCustomer?.name,
+            totalDiscount: totalDiscountValue, loyaltyPointsEarned: pointsEarned,
+            loyaltyPointsRedeemed: loyaltyDiscount.points, loyaltyDiscountAmount: loyaltyDiscount.amount,
         };
 
         syncApi.recordSale(saleRecord, isOnline);
@@ -292,8 +317,9 @@ const App: React.FC = () => {
         setCurrentShift(updatedShift);
 
         setPendingSalesCount(syncApi.getQueuedSales().length);
-        setSalesHistory(prev => [...prev, saleRecord]); // Optimistic update
+        setSalesHistory(prev => [...prev, saleRecord]);
         await refreshInventoryData();
+        await refreshCustomers();
 
         if (isOnline) handleSync();
         handleClearCart();
@@ -301,8 +327,9 @@ const App: React.FC = () => {
 
     } catch (error) {
         console.error("Failed to finalize sale:", error);
+        alert(error instanceof Error ? error.message : "Ocorreu um erro desconhecido ao finalizar a venda.");
     }
-  }, [cart, total, subtotal, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, isOnline, handleSync, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers]);
+  }, [cart, total, subtotal, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, isOnline, handleSync, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers, refreshFinancials]);
 
   // --- SHIFT LOGIC ---
   const handleOpenShift = useCallback(async (openingBalance: number) => {
@@ -407,7 +434,7 @@ const App: React.FC = () => {
     await productApi.deleteProduct(productId); await refreshProducts(); await refreshInventoryData();
   }, [refreshProducts, refreshInventoryData]);
 
-  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt'>) => {
+  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt' | 'creditLimit' | 'currentBalance'>) => {
     await customerApi.addCustomer(customerData); await refreshCustomers();
   }, [refreshCustomers]);
 
@@ -418,6 +445,13 @@ const App: React.FC = () => {
   const handleDeleteCustomer = useCallback(async (customerId: string) => {
     await customerApi.deleteCustomer(customerId); await refreshCustomers();
   }, [refreshCustomers]);
+
+  const handleSettleCustomerDebt = useCallback(async (customerId: string) => {
+    await financialApi.settleCustomerDebts(customerId);
+    await customerApi.updateCustomerBalance(customerId, 0, true); // set balance to 0
+    await refreshFinancials();
+    await refreshCustomers();
+  }, [refreshFinancials, refreshCustomers]);
 
   const handleAddSupplier = useCallback(async (supplierData: Omit<Supplier, 'id'>) => {
     await supplierApi.addSupplier(supplierData); await refreshSuppliers();
@@ -442,6 +476,20 @@ const App: React.FC = () => {
   const handleDeleteUser = useCallback(async (userId: string) => {
     await userApi.deleteUser(userId); await refreshUsers();
   }, [refreshUsers]);
+  
+  const handleAddPurchaseOrder = useCallback(async (orderData: Omit<PurchaseOrder, 'id' | 'status' | 'createdAt'>) => {
+    await purchasingApi.addPurchaseOrder(orderData);
+    await refreshPurchaseOrders();
+  }, [refreshPurchaseOrders]);
+  
+  // FIX: The status update function should only accept the valid target statuses ('Recebido' or 'Cancelado') as defined in the API.
+  const handleUpdatePurchaseOrderStatus = useCallback(async (orderId: string, status: 'Recebido' | 'Cancelado') => {
+    await purchasingApi.updatePurchaseOrderStatus(orderId, status);
+    await refreshPurchaseOrders();
+    if (status === 'Recebido') {
+        await refreshInventoryData();
+    }
+  }, [refreshPurchaseOrders, refreshInventoryData]);
 
 
   // --- NF-e Import Handler ---
@@ -461,11 +509,12 @@ const App: React.FC = () => {
       <ERPDashboard
         currentUser={currentUser} 
         products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct}
-        customers={customers} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer}
+        customers={customers} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} onSettleCustomerDebt={handleSettleCustomerDebt}
         suppliers={suppliers} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier}
         salesHistory={salesHistory} shiftHistory={shiftHistory}
         users={users} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser}
         financials={financials} stockLevels={stockLevels} stockMovements={stockMovements}
+        purchaseOrders={purchaseOrders} onAddPurchaseOrder={handleAddPurchaseOrder} onUpdatePurchaseOrderStatus={handleUpdatePurchaseOrderStatus}
         onRefreshInventory={refreshInventoryData} onNFeImport={handleNFeImport}
         onBackToPDV={() => setCurrentView('pdv')} 
       />
@@ -574,7 +623,12 @@ const App: React.FC = () => {
       )}
 
       {isPaymentModalOpen && (
-        <PaymentModal total={total} onFinalize={handleFinalizeSale} onCancel={() => setPaymentModalOpen(false)} />
+        <PaymentModal 
+          total={total} 
+          onFinalize={handleFinalizeSale} 
+          onCancel={() => setPaymentModalOpen(false)}
+          selectedCustomer={selectedCustomer}
+        />
       )}
 
        {isHomologationPanelOpen && <HomologationPanel onClose={() => setHomologationPanelOpen(false)} />}

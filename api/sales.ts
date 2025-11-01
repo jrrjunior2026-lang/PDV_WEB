@@ -49,6 +49,7 @@ function createNFCeObject(cart: CartItem[], subtotal: number, totalDiscount: num
     'PIX': '17',
     'Credito': '03',
     'Debito': '04',
+    'Fiado': '15', // 15 = Boleto a Prazo, a good approximation for "Fiado"
   };
   
   const detPag: PagamentoNFCe[] = payments.map(p => ({

@@ -60,7 +60,8 @@ export const openShift = (openingBalance: number, user: { id: string, name: stri
             totalSales: 0,
             totalSuprimentos: openingBalance, // Initial funding is a "suprimento"
             totalSangrias: 0,
-            paymentTotals: { 'Dinheiro': 0, 'PIX': 0, 'Credito': 0, 'Debito': 0 },
+            // FIX: The `paymentTotals` object must include all keys from the `PaymentMethod` type, including 'Fiado', to satisfy the `Record<PaymentMethod, number>` type definition.
+            paymentTotals: { 'Dinheiro': 0, 'PIX': 0, 'Credito': 0, 'Debito': 0, 'Fiado': 0 },
             movements: [{
                 id: uuidv4(),
                 timestamp: new Date().toISOString(),

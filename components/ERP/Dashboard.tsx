@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission } from '../../types';
+import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission, PurchaseOrder } from '../../types';
 import ProductManagement from './ProductManagement';
 import SalesHistory from './SalesHistory';
 import UserManagement from './UserManagement';
@@ -9,6 +10,7 @@ import InventoryManagement from './InventoryManagement';
 import CustomerManagement from './CustomerManagement';
 import SupplierManagement from './SupplierManagement';
 import ShiftHistory from './ShiftHistory';
+import PurchaseOrderManagement from './PurchaseOrderManagement';
 import MainDashboard from './Dashboard/MainDashboard';
 import * as analyticsApi from '../../api/analytics';
 import * as authApi from '../../api/auth';
@@ -66,6 +68,11 @@ const BuildingLibraryIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6M3 9v11.25a1.5 1.5 0 0 0 1.5 1.5h15a1.5 1.5 0 0 0 1.5-1.5V9M3 9h18" />
   </svg>
 );
+const ClipboardDocumentListIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2Z" />
+    </svg>
+);
 
 
 
@@ -77,9 +84,10 @@ interface ERPDashboardProps {
   onDeleteProduct: (productId: string) => Promise<void>;
   
   customers: Customer[];
-  onAddCustomer: (customer: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt'>) => Promise<void>;
+  onAddCustomer: (customer: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt' | 'creditLimit' | 'currentBalance'>) => Promise<void>;
   onUpdateCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer: (customerId: string) => Promise<void>;
+  onSettleCustomerDebt: (customerId: string) => Promise<void>;
 
   suppliers: Supplier[];
   onAddSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<void>;
@@ -97,12 +105,18 @@ interface ERPDashboardProps {
   financials: AccountTransaction[];
   stockLevels: StockLevel[];
   stockMovements: StockMovement[];
+  
+  purchaseOrders: PurchaseOrder[];
+  onAddPurchaseOrder: (orderData: Omit<PurchaseOrder, 'id' | 'status' | 'createdAt'>) => Promise<void>;
+  // FIX: The status update function should only accept the valid target statuses.
+  onUpdatePurchaseOrderStatus: (orderId: string, status: 'Recebido' | 'Cancelado') => Promise<void>;
+
   onRefreshInventory: () => Promise<void>;
   onNFeImport: (file: File) => Promise<NFeImportResult>;
   onBackToPDV: () => void;
 }
 
-type ERPView = 'dashboard' | 'products' | 'customers' | 'suppliers' | 'sales' | 'shifts' | 'users' | 'financials' | 'inventory';
+type ERPView = 'dashboard' | 'products' | 'customers' | 'suppliers' | 'sales' | 'shifts' | 'users' | 'financials' | 'inventory' | 'purchasing';
 
 const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   const [activeView, setActiveView] = useState<ERPView>('dashboard');
@@ -137,6 +151,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
             onAdd={props.onAddCustomer}
             onUpdate={props.onUpdateCustomer}
             onDelete={props.onDeleteCustomer}
+            onSettleDebt={props.onSettleCustomerDebt}
         />;
       case 'suppliers':
         return <SupplierManagement
@@ -166,6 +181,14 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
         />;
       case 'financials':
         return <Financials transactions={props.financials} />;
+      case 'purchasing':
+        return <PurchaseOrderManagement
+            purchaseOrders={props.purchaseOrders}
+            suppliers={props.suppliers}
+            products={props.products}
+            onAdd={props.onAddPurchaseOrder}
+            onUpdateStatus={props.onUpdatePurchaseOrderStatus}
+        />;
       default:
         return null;
     }
@@ -193,6 +216,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
       { label: 'Clientes', view: 'customers', icon: <UserGroupIcon className="w-6 h-6" />, permission: 'manage_customers', section: 'Cadastros' },
       { label: 'Fornecedores', view: 'suppliers', icon: <BuildingStorefrontIcon className="w-6 h-6" />, permission: 'manage_suppliers', section: 'Cadastros' },
       { label: 'Estoque', view: 'inventory', icon: <ArchiveBoxIcon className="w-6 h-6" />, permission: 'manage_inventory', section: 'Operacional' },
+      { label: 'Ordens de Compra', view: 'purchasing', icon: <ClipboardDocumentListIcon className="w-6 h-6" />, permission: 'manage_purchasing', section: 'Operacional' },
       { label: 'Turnos de Caixa', view: 'shifts', icon: <BuildingLibraryIcon className="w-6 h-6" />, permission: 'view_reports', section: 'Operacional' },
       { label: 'Relatórios de Vendas', view: 'sales', icon: <DocumentChartBarIcon className="w-6 h-6" />, permission: 'view_reports', section: 'Operacional' },
       { label: 'Financeiro', view: 'financials', icon: <BanknotesIcon className="w-6 h-6" />, permission: 'manage_financials', section: 'Operacional' },
