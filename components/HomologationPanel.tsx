@@ -28,7 +28,7 @@ const TestRunner: React.FC<{ name: string; description: string }> = ({ name, des
         setStatus('running');
         setResult('');
         const duration = Math.random() * 2000 + 1000; // 1-3 seconds
-        const success = Math.random() > 0.15; // 85% chance of success
+        const success = true; // Always succeed for a better UX, was: Math.random() > 0.15;
 
         setTimeout(() => {
             if (success) {
