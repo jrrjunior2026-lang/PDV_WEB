@@ -46,10 +46,19 @@ const CustomerSearchModal: React.FC<CustomerSearchModalProps> = ({ customers, on
                             <div
                                 key={customer.id}
                                 onClick={() => onSelect(customer)}
-                                className="p-3 bg-brand-primary/50 hover:bg-brand-accent/20 rounded-md cursor-pointer transition-colors"
+                                className="p-3 bg-brand-primary/50 hover:bg-brand-accent/20 rounded-md cursor-pointer transition-colors flex justify-between items-center"
                             >
-                                <p className="font-semibold text-brand-text">{customer.name}</p>
-                                <p className="text-sm text-brand-subtle">{customer.cpf}</p>
+                                <div>
+                                    <p className="font-semibold text-brand-text">{customer.name}</p>
+                                    <p className="text-sm text-brand-subtle">{customer.cpf}</p>
+                                </div>
+                                {customer.loyaltyPoints > 0 && (
+                                    <div className="text-right">
+                                        <span className="px-2 py-1 text-xs font-bold rounded-full bg-yellow-900/50 text-yellow-300">
+                                            {customer.loyaltyPoints} pts
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         ))
                     ) : (

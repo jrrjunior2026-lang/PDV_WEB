@@ -29,7 +29,7 @@ const TagIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 const GiftIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12.75 6.375a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM12.75 6.375v4.5m-9-4.5h9m-9 4.5h9m0-4.5v4.5m0 0v4.5m-4.5-4.5h4.5m-4.5 4.5h4.5m1.5-4.5h4.5m-4.5 4.5h4.5m4.5-4.5h-4.5m-4.5 0h4.5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
   </svg>
 );
 
@@ -58,9 +58,12 @@ const CartDisplay: React.FC<CartDisplayProps> = ({ items, subtotal, promotionalD
                     </div>
                 </div>
                 {selectedCustomer.loyaltyPoints > 0 && (
-                    <button onClick={onRedeemPoints} className="w-full flex items-center justify-center gap-2 bg-yellow-600/20 text-yellow-300 hover:bg-yellow-600/40 p-2 rounded-lg text-xs font-semibold">
-                       <GiftIcon className="w-4 h-4" />
-                       Resgatar Pontos
+                     <button onClick={onRedeemPoints} className="w-full flex flex-col items-center justify-center gap-1 bg-yellow-600/20 text-yellow-300 hover:bg-yellow-600/40 p-2 rounded-lg transition-colors">
+                       <span className="text-xs font-bold">Você tem {selectedCustomer.loyaltyPoints} pontos!</span>
+                       <div className="flex items-center gap-1">
+                            <GiftIcon className="w-4 h-4" />
+                            <span className="text-sm font-semibold underline">Resgatar agora</span>
+                       </div>
                     </button>
                 )}
             </div>

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder } from './types';
@@ -229,7 +230,7 @@ const App: React.FC = () => {
     setCart([]);
     setSelectedCustomer(null);
     setLoyaltyDiscount({ points: 0, amount: 0 });
-  }, []);
+  }, [setCart, setSelectedCustomer, setLoyaltyDiscount]);
 
   const handleOpenDiscountModal = useCallback((target: DiscountTarget) => {
       setDiscountTarget(target);
@@ -264,7 +265,7 @@ const App: React.FC = () => {
   const handleApplyLoyaltyPoints = useCallback((pointsToRedeem: number, discountAmount: number) => {
     setLoyaltyDiscount({ points: pointsToRedeem, amount: discountAmount });
     setLoyaltyModalOpen(false);
-  }, []);
+  }, [setLoyaltyDiscount, setLoyaltyModalOpen]);
 
 
   const { subtotal, promotionalDiscount, loyaltyDiscountAmount, total } = useMemo(() => {
