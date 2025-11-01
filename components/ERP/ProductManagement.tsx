@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Product } from '../../types';
 import EntityFormModal from './EntityFormModal';
 import ConfirmationModal from './ConfirmationModal';
+import * as geminiService from '../../services/geminiService';
 
 interface ProductManagementProps {
   products: Product[];
@@ -47,12 +48,26 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ products, onAdd, 
     setFormOpen(false);
     setSelectedProduct(null);
   };
+
+  const handleAIGenerate = async (fieldName: string, currentData: any): Promise<string | undefined> => {
+      if (fieldName === 'name') {
+          try {
+              const suggestion = await geminiService.suggestProductName(currentData.name, currentData.category);
+              return suggestion;
+          } catch (error) {
+              console.error("AI suggestion failed:", error);
+              return undefined;
+          }
+      }
+      return undefined;
+  }
   
   const productFields = [
-    { name: 'name', label: 'Nome do Produto', type: 'text', required: true },
+    { name: 'name', label: 'Nome do Produto', type: 'text', required: true, aiEnabled: true },
     { name: 'price', label: 'Preço', type: 'number', required: true, step: '0.01' },
     { name: 'category', label: 'Categoria', type: 'text', required: true },
     { name: 'imageUrl', label: 'URL da Imagem', type: 'text', required: true },
+    { name: 'code', label: 'Código Interno', type: 'text', required: true },
     { name: 'fiscalData.ncm', label: 'NCM', type: 'text', required: true, nested: true },
     { name: 'fiscalData.cfop', label: 'CFOP', type: 'text', required: true, nested: true },
   ];
@@ -112,6 +127,7 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ products, onAdd, 
           initialData={selectedProduct}
           onSave={handleSave}
           onClose={() => setFormOpen(false)}
+          onAIGenerate={handleAIGenerate}
         />
       )}
       {isConfirmOpen && selectedProduct && (

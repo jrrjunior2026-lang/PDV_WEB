@@ -2,14 +2,19 @@ import React from 'react';
 import KpiCard from './KpiCard';
 import SalesByHourChart from './SalesByHourChart';
 import TopItemsList from './TopItemsList';
+import GeminiAnalyzer from '../../GeminiAnalyzer';
+import type { SaleRecord, Product } from '../../../types';
+
 
 interface MainDashboardProps {
     data: any; // Analytics data
+    salesHistory: SaleRecord[];
+    products: Product[];
 }
 
 const CurrencyBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const MainDashboard: React.FC<MainDashboardProps> = ({ data }) => {
+const MainDashboard: React.FC<MainDashboardProps> = ({ data, salesHistory, products }) => {
     if (!data) return null;
 
     const { kpis, charts, lists } = data;
@@ -25,8 +30,11 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ data }) => {
                 <KpiCard title="Itens Vendidos (Hoje)" value={kpis.itemsSoldToday} />
             </div>
 
+            {/* AI Analyzer */}
+            <GeminiAnalyzer salesHistory={salesHistory} products={products} />
+
             {/* Charts and Lists */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
                 <div className="lg:col-span-2 bg-brand-secondary rounded-lg border border-brand-border p-6">
                     <h3 className="text-xl font-bold text-white mb-4">Vendas por Hora (Hoje)</h3>
                     {charts.salesByHour.length > 0 ? (

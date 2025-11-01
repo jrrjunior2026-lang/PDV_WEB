@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { User } from '../types';
+import { hasPermission } from '../api/auth';
 
 const ClockIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -57,6 +58,7 @@ interface PDVHeaderProps {
 const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP, shiftStatus, onCloseShift, onSuprimento, onSangria, currentUser }) => {
     const [time, setTime] = useState(new Date());
     const isShiftOpen = shiftStatus === 'Aberto';
+    const canViewDashboard = currentUser && hasPermission(currentUser.role, 'view_dashboard');
 
     useEffect(() => {
         const timerId = setInterval(() => setTime(new Date()), 1000);
@@ -102,21 +104,25 @@ const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pending
                     <button onClick={onSangria} disabled={!isShiftOpen} className="text-sm bg-yellow-600/50 text-yellow-300 px-3 py-1.5 rounded-md hover:bg-yellow-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Sangria</button>
                     <button onClick={onCloseShift} disabled={!isShiftOpen} className="text-sm bg-red-600/50 text-red-300 px-3 py-1.5 rounded-md hover:bg-red-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Fechar Caixa</button>
                 </div>
-                <div className="w-px h-6 bg-brand-border"></div>
-                <button 
-                  onClick={onOpenERP}
-                  className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
-                  title="Painel ERP"
-                >
-                    <CogIcon className="w-6 h-6" />
-                </button>
-                 <button 
-                  onClick={onOpenHomologationPanel}
-                  className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
-                  title="Painel de Homologação"
-                >
-                    <ClipboardDocumentCheckIcon className="w-6 h-6" />
-                </button>
+                {canViewDashboard && (
+                    <>
+                        <div className="w-px h-6 bg-brand-border"></div>
+                        <button 
+                          onClick={onOpenERP}
+                          className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
+                          title="Painel ERP"
+                        >
+                            <CogIcon className="w-6 h-6" />
+                        </button>
+                         <button 
+                          onClick={onOpenHomologationPanel}
+                          className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
+                          title="Painel de Homologação"
+                        >
+                            <ClipboardDocumentCheckIcon className="w-6 h-6" />
+                        </button>
+                    </>
+                )}
                 {renderSyncStatus()}
                 <div className="flex items-center gap-2 text-brand-subtle">
                     <UserIcon className="w-5 h-5" />

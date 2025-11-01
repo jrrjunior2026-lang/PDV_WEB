@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment } from './types';
@@ -14,6 +15,7 @@ import ShiftMovementModal from './components/ShiftMovementModal';
 import CustomerSearchModal from './components/CustomerSearchModal';
 import DiscountModal from './components/DiscountModal';
 import LoyaltyRedemptionModal from './components/LoyaltyRedemptionModal';
+import VoiceCommandControl, { VoiceStatus } from './components/VoiceCommandControl';
 
 
 import * as productApi from './api/products';
@@ -27,6 +29,7 @@ import * as userApi from './api/users';
 import * as authApi from './api/auth';
 import { getFinancials } from './api/financials';
 import * as cashRegisterApi from './api/cashRegister';
+import * as geminiService from './services/geminiService';
 
 
 type AppView = 'pdv' | 'erp';
@@ -67,6 +70,10 @@ const App: React.FC = () => {
   const [isShiftOpenModalVisible, setShiftOpenModalVisible] = useState(false);
   const [activeShiftModal, setActiveShiftModal] = useState<ShiftModal>(null);
   const [movementType, setMovementType] = useState<'Suprimento' | 'Sangria'>('Sangria');
+
+  // Voice Command State
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   // Offline/Sync State
   const [isOnline, setIsOnline] = useState(true);
@@ -116,8 +123,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const loadInitialData = async () => {
       // Simulate user login
-      // Change to 'user-2' to test 'Caixa' role permissions
-      const user = await authApi.getCurrentUser('user-2');
+      // Change to 'user-1' to test 'Admin' role permissions
+      const user = await authApi.getCurrentUser('user-2'); 
       setCurrentUser(user);
 
       const activeShift = await cashRegisterApi.getCurrentShift();
@@ -156,16 +163,16 @@ const App: React.FC = () => {
   useEffect(() => { if (isOnline) handleSync(); }, [isOnline, handleSync]);
 
   // --- PDV CART & DISCOUNT LOGIC ---
-  const handleAddToCart = useCallback((product: Product) => {
+  const handleAddToCart = useCallback((product: Product, quantity: number = 1) => {
     if (!currentShift) return;
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
         return prevCart.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
-      return [...prevCart, { ...product, quantity: 1 }];
+      return [...prevCart, { ...product, quantity }];
     });
   }, [currentShift]);
 
@@ -247,7 +254,7 @@ const App: React.FC = () => {
   const handleFinalizeSale = useCallback(async (payments: Payment[], changeGiven: number) => {
     try {
         const totalDiscountValue = promotionalDiscount + loyaltyDiscountAmount;
-        const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscountValue);
+        const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscountValue, payments);
 
         let pointsEarned = 0;
         if (selectedCustomer) {
@@ -320,6 +327,54 @@ const App: React.FC = () => {
   const openMovementModal = (type: 'Suprimento' | 'Sangria') => {
       setMovementType(type); setActiveShiftModal('movement');
   }
+
+  // --- VOICE COMMAND LOGIC ---
+  const handleVoiceCommand = useCallback(() => {
+    // FIX: Cast window to `any` to access non-standard SpeechRecognition APIs.
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceError("Reconhecimento de voz não é suportado neste navegador.");
+      setVoiceStatus('error');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setVoiceStatus('listening');
+    recognition.onend = () => {
+      if (voiceStatus !== 'processing') setVoiceStatus('idle');
+    };
+    recognition.onerror = (event: any) => {
+      setVoiceError(event.error);
+      setVoiceStatus('error');
+    };
+
+    recognition.onresult = async (event: any) => {
+      const command = event.results[0][0].transcript;
+      setVoiceStatus('processing');
+      try {
+        const itemsToAdd = await geminiService.parseAddToCartCommand(command, products);
+        if (itemsToAdd.length > 0) {
+          itemsToAdd.forEach(item => {
+            const product = products.find(p => p.name.toLowerCase() === item.productName.toLowerCase());
+            if (product) {
+              handleAddToCart(product, item.quantity);
+            }
+          });
+        }
+        setVoiceStatus('idle');
+      } catch (e) {
+        setVoiceError("Não foi possível entender o comando.");
+        setVoiceStatus('error');
+      }
+    };
+
+    recognition.start();
+  }, [products, handleAddToCart, voiceStatus]);
+
 
   // --- KEYBOARD SHORTCUTS ---
   useEffect(() => {
@@ -442,21 +497,24 @@ const App: React.FC = () => {
             </div>
         )}
         <div className={`w-2/3 flex flex-col p-4 ${isPdvLocked ? 'pointer-events-none blur-sm' : ''}`}>
-            <div className="mb-4 relative">
-                <label htmlFor="product-search-input" className="sr-only">Buscar Produto (F1)</label>
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-brand-subtle" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                    </svg>
+            <div className="mb-4 flex items-center gap-2">
+                <div className="relative flex-grow">
+                    <label htmlFor="product-search-input" className="sr-only">Buscar Produto (F1)</label>
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-brand-subtle" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                        </svg>
+                    </div>
+                    <input
+                        id="product-search-input" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Buscar produto... (F1)"
+                        className="w-full bg-brand-secondary border border-brand-border rounded-md p-2 pl-10 text-brand-text placeholder-brand-subtle focus:ring-1 focus:ring-brand-accent focus:border-brand-accent"
+                    />
                 </div>
-                <input
-                    id="product-search-input" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Buscar produto... (F1)"
-                    className="w-full bg-brand-secondary border border-brand-border rounded-md p-2 pl-10 text-brand-text placeholder-brand-subtle focus:ring-1 focus:ring-brand-accent focus:border-brand-accent"
-                />
+                <VoiceCommandControl status={voiceStatus} onClick={handleVoiceCommand} />
             </div>
             <div className="flex-1 overflow-y-auto pr-2">
-                <ProductGrid products={filteredProducts} onAddToCart={handleAddToCart} />
+                <ProductGrid products={filteredProducts} onAddToCart={(p) => handleAddToCart(p, 1)} />
             </div>
         </div>
         <aside className={`w-1/3 bg-brand-secondary border-l border-brand-border flex flex-col ${isPdvLocked ? 'pointer-events-none blur-sm' : ''}`}>

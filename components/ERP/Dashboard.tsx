@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission } from '../../types';
 import ProductManagement from './ProductManagement';
@@ -122,7 +123,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-          return analyticsData ? <MainDashboard data={analyticsData} /> : <div className="text-center p-10">Carregando dados do dashboard...</div>;
+          return analyticsData ? <MainDashboard data={analyticsData} salesHistory={props.salesHistory} products={props.products} /> : <div className="text-center p-10">Carregando dados do dashboard...</div>;
       case 'products':
         return <ProductManagement 
             products={props.products} 
@@ -204,14 +205,14 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   }, [props.currentUser]);
   
   const navSections = useMemo(() => {
-    // FIX: Explicitly type the accumulator for `reduce` to ensure correct type inference for `navSections`. This resolves the issue where `items.map` would fail because `items` was inferred as `unknown`.
-    return visibleNavItems.reduce<Record<string, typeof visibleNavItems>>((acc, item) => {
+    // FIX: By casting the initial value of the reduce function, we help TypeScript correctly infer the type of `navSections`, which resolves the error on `items.map`.
+    return visibleNavItems.reduce((acc, item) => {
         if (!acc[item.section]) {
             acc[item.section] = [];
         }
         acc[item.section].push(item);
         return acc;
-    }, {});
+    }, {} as Record<string, typeof visibleNavItems>);
   }, [visibleNavItems]);
 
 

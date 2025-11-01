@@ -11,7 +11,7 @@ const MOCK_EMITENTE: Emitente = {
   IE: '111111111111', CRT: '1',
 };
 
-function createNFCeObject(cart: CartItem[], subtotal: number, totalDiscount: number): NFCe {
+function createNFCeObject(cart: CartItem[], subtotal: number, totalDiscount: number, payments: Payment[]): NFCe {
   const produtos: ProdutoNFCe[] = cart.map(item => {
     const vProd = item.price * item.quantity;
     let vDesc = 0;
@@ -44,7 +44,17 @@ function createNFCeObject(cart: CartItem[], subtotal: number, totalDiscount: num
       vNF: totalNf, vTotTrib: vTotTribGlobal
   };
 
-  const detPag: PagamentoNFCe[] = [{ tpag: '01', vPag: totalNf }]; // Simplified for this step
+  const paymentTypeMap: Record<PaymentMethod, string> = {
+    'Dinheiro': '01',
+    'PIX': '17',
+    'Credito': '03',
+    'Debito': '04',
+  };
+  
+  const detPag: PagamentoNFCe[] = payments.map(p => ({
+    tpag: paymentTypeMap[p.method],
+    vPag: p.amount,
+  }));
 
   return {
     infNFe: {
@@ -73,9 +83,9 @@ function objectToXml(obj: any, indent = ''): string {
     }).join('\n');
 }
 
-const generateNFCeXml = (cart: CartItem[], subtotal: number, totalDiscount: number): Promise<string> => new Promise(resolve => {
+const generateNFCeXml = (cart: CartItem[], subtotal: number, totalDiscount: number, payments: Payment[]): Promise<string> => new Promise(resolve => {
   setTimeout(() => {
-    const nfceObject = createNFCeObject(cart, subtotal, totalDiscount);
+    const nfceObject = createNFCeObject(cart, subtotal, totalDiscount, payments);
     const xmlString = `<?xml version="1.0" encoding="UTF-8"?>\n<NFe xmlns="http://www.portalfiscal.inf.br/nfe">\n${objectToXml(nfceObject, '  ')}\n</NFe>`;
     resolve(xmlString);
   }, 1000);
@@ -94,9 +104,10 @@ const signNFCeXml = (xml: string): Promise<string> => new Promise(resolve => {
 export const generateAndSignNfce = async (
     cart: CartItem[], 
     subtotal: number,
-    totalDiscount: number
+    totalDiscount: number,
+    payments: Payment[],
 ): Promise<string> => {
-    const xml = await generateNFCeXml(cart, subtotal, totalDiscount);
+    const xml = await generateNFCeXml(cart, subtotal, totalDiscount, payments);
     const signedXml = await signNFCeXml(xml);
     return signedXml;
 };
