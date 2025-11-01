@@ -1,5 +1,5 @@
 {
-  "name": "ERP + PDV Fiscal Offline-First (Brasil)",
+  "name": "ERP + PDV Fiscal ",
   "description": "A full-stack application featuring an offline-first Point-of-Sale (PDV) frontend and an integrated Enterprise Resource Planning (ERP) backend for managing products, sales, and fiscal operations.",
   "requestFramePermissions": [
     "microphone"
