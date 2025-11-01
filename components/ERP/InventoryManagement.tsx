@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { StockLevel, StockMovement, Product, InventoryReport, NFeImportResult } from '../../types';
+import type { StockLevel, StockMovement, Product, InventoryReport, NFeImportResult, InventoryCountItem } from '../../types';
 import InventoryCountModal from './InventoryCountModal';
 import NFeImportModal from './NFeImportModal';
 
@@ -7,11 +7,11 @@ interface InventoryManagementProps {
     stockLevels: StockLevel[];
     stockMovements: StockMovement[];
     products: Product[];
-    onInventoryUpdated: () => Promise<void>;
+    onProcessInventoryCount: (items: InventoryCountItem[]) => Promise<InventoryReport>;
     onNFeImport: (file: File) => Promise<NFeImportResult>;
 }
 
-const InventoryManagement: React.FC<InventoryManagementProps> = ({ stockLevels, stockMovements, products, onInventoryUpdated, onNFeImport }) => {
+const InventoryManagement: React.FC<InventoryManagementProps> = ({ stockLevels, stockMovements, products, onProcessInventoryCount, onNFeImport }) => {
     const [isCountModalOpen, setCountModalOpen] = useState(false);
     const [isImportModalOpen, setImportModalOpen] = useState(false);
     const [inventoryReport, setInventoryReport] = useState<InventoryReport | null>(null);
@@ -29,16 +29,15 @@ const InventoryManagement: React.FC<InventoryManagementProps> = ({ stockLevels, 
         setImportModalOpen(true);
     }
 
-    const handleFinishInventoryCount = async (report: InventoryReport) => {
+    const handleFinishInventoryCount = async (items: InventoryCountItem[]) => {
+        const report = await onProcessInventoryCount(items);
         setCountModalOpen(false);
         setInventoryReport(report);
-        await onInventoryUpdated();
     }
 
     const handleFinishNFeImport = (result: NFeImportResult) => {
         setImportModalOpen(false);
         setImportResult(result);
-        // The data refresh is already handled in App.tsx
     }
 
     const getMovementTypeClass = (type: StockMovement['type']) => {
@@ -47,6 +46,7 @@ const InventoryManagement: React.FC<InventoryManagementProps> = ({ stockLevels, 
             case 'Ajuste de Inventário': return 'text-yellow-400';
             case 'Entrada Inicial': return 'text-green-400';
             case 'Entrada (NF-e)': return 'text-blue-400';
+            case 'Entrada (Compra)': return 'text-blue-400';
             default: return 'text-brand-text';
         }
     }

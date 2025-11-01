@@ -1,9 +1,8 @@
 
 
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder } from './types';
+// FIX: Add missing InventoryReport type to the import.
+import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder, InventoryCountItem, InventoryReport } from './types';
 import PDVHeader from './components/PDVHeader';
 import ProductGrid from './components/ProductGrid';
 import CartDisplay from './components/CartDisplay';
@@ -20,21 +19,10 @@ import LoyaltyRedemptionModal from './components/LoyaltyRedemptionModal';
 import VoiceCommandControl, { VoiceStatus } from './components/VoiceCommandControl';
 import Login from './components/Login';
 
-
-import * as productApi from './api/products';
-import * as customerApi from './api/customers';
-import * as supplierApi from './api/suppliers';
-import { generateAndSignNfce } from './api/sales';
-import * as syncApi from './api/sync';
-import * as inventoryApi from './api/inventory';
-import * as nfeProcessor from './api/nfeProcessor';
-import * as userApi from './api/users';
-import * as authApi from './api/auth';
-import * as financialApi from './api/financials';
-import * as cashRegisterApi from './api/cashRegister';
-import * as purchasingApi from './api/purchasing';
 import * as geminiService from './services/geminiService';
 import * as tokenService from './services/tokenService';
+import apiClient from './services/apiClient';
+import { hasPermission } from './services/authService';
 
 
 type AppView = 'pdv' | 'erp';
@@ -58,6 +46,7 @@ const App: React.FC = () => {
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [shiftHistory, setShiftHistory] = useState<CashShift[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
 
   // PDV State
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -82,9 +71,8 @@ const App: React.FC = () => {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
-  // Offline/Sync State
-  const [isOnline, setIsOnline] = useState(true);
-  const [pendingSalesCount, setPendingSalesCount] = useState(0);
+  // Offline/Sync State - This will be simplified as we assume online-first now
+  const [isOnline, setIsOnline] = useState(true); // Default to online
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Homologation Panel State
@@ -92,47 +80,79 @@ const App: React.FC = () => {
   
   // --- DATA REFRESH LOGIC ---
   const refreshInventoryData = useCallback(async () => {
+    try {
       const [levels, movements] = await Promise.all([
-          inventoryApi.getStockLevels(),
-          inventoryApi.getStockMovements()
+          apiClient.get<StockLevel[]>('/inventory/levels'),
+          apiClient.get<StockMovement[]>('/inventory/movements')
       ]);
       setStockLevels(levels);
       setStockMovements(movements);
+    } catch (error) {
+        console.error("Failed to refresh inventory data", error);
+    }
   }, []);
 
   const refreshProducts = useCallback(async () => {
-    const prods = await productApi.getProducts();
-    setProducts(prods);
+    try {
+        const prods = await apiClient.get<Product[]>('/products');
+        setProducts(prods);
+    } catch (error) {
+        console.error("Failed to refresh products", error);
+    }
   }, []);
 
   const refreshCustomers = useCallback(async () => {
-    const custs = await customerApi.getCustomers();
-    setCustomers(custs);
+    try {
+        const custs = await apiClient.get<Customer[]>('/customers');
+        setCustomers(custs);
+    } catch (error) {
+        console.error("Failed to refresh customers", error);
+    }
   }, []);
 
   const refreshSuppliers = useCallback(async () => {
-    const supps = await supplierApi.getSuppliers();
-    setSuppliers(supps);
+    try {
+        const supps = await apiClient.get<Supplier[]>('/suppliers');
+        setSuppliers(supps);
+    } catch(error) {
+        console.error("Failed to refresh suppliers", error);
+    }
   }, []);
   
   const refreshUsers = useCallback(async () => {
-    const userList = await userApi.getUsers();
-    setUsers(userList);
+    try {
+        const userList = await apiClient.get<User[]>('/users');
+        setUsers(userList);
+    } catch(error) {
+        console.error("Failed to refresh users", error);
+    }
   }, []);
 
   const refreshFinancials = useCallback(async () => {
-    const financialData = await financialApi.getFinancials();
-    setFinancials(financialData);
+    try {
+        const financialData = await apiClient.get<AccountTransaction[]>('/financials');
+        setFinancials(financialData);
+    } catch(error) {
+        console.error("Failed to refresh financials", error);
+    }
   }, []);
 
   const refreshShiftHistory = useCallback(async () => {
-      const history = await cashRegisterApi.getShiftHistory();
+    try {
+      const history = await apiClient.get<CashShift[]>('/shifts/history');
       setShiftHistory(history);
+    } catch (error) {
+      console.error("Failed to refresh shift history", error);
+    }
   }, []);
   
   const refreshPurchaseOrders = useCallback(async () => {
-    const orders = await purchasingApi.getPurchaseOrders();
-    setPurchaseOrders(orders);
+    try {
+        const orders = await apiClient.get<PurchaseOrder[]>('/purchasing/orders');
+        setPurchaseOrders(orders);
+    } catch (error) {
+        console.error("Failed to refresh purchase orders", error);
+    }
   }, []);
 
 
@@ -146,25 +166,38 @@ const App: React.FC = () => {
     } else {
         setCurrentView('erp');
     }
-
-    const [ prods, custs, supps, queuedSales, history, userList, financialData, sLevels, sMovements, shifts, pOrders ] = await Promise.all([
-      productApi.getProducts(), customerApi.getCustomers(), supplierApi.getSuppliers(),
-      syncApi.getQueuedSales(), syncApi.getSalesHistory(), userApi.getUsers(),
-      financialApi.getFinancials(), inventoryApi.getStockLevels(), inventoryApi.getStockMovements(),
-      cashRegisterApi.getShiftHistory(), purchasingApi.getPurchaseOrders()
-    ]);
-
-    setProducts(prods); setCustomers(custs); setSuppliers(supps);
-    setPendingSalesCount(queuedSales.length); setSalesHistory(history);
-    setUsers(userList); setFinancials(financialData); setStockLevels(sLevels);
-    setStockMovements(sMovements); setShiftHistory(shifts); setPurchaseOrders(pOrders);
     
-    const activeShift = await cashRegisterApi.getCurrentShift();
-    setCurrentShift(activeShift);
-    if (!activeShift && user.role === 'Caixa') {
-        setShiftOpenModalVisible(true);
+    try {
+        const [ prods, custs, supps, history, userList, financialData, sLevels, sMovements, shifts, pOrders, activeShift, analytics ] = await Promise.all([
+            apiClient.get<Product[]>('/products'), 
+            apiClient.get<Customer[]>('/customers'), 
+            apiClient.get<Supplier[]>('/suppliers'),
+            apiClient.get<SaleRecord[]>('/sales/history'), 
+            apiClient.get<User[]>('/users'),
+            apiClient.get<AccountTransaction[]>('/financials'), 
+            apiClient.get<StockLevel[]>('/inventory/levels'), 
+            apiClient.get<StockMovement[]>('/inventory/movements'),
+            apiClient.get<CashShift[]>('/shifts/history'), 
+            apiClient.get<PurchaseOrder[]>('/purchasing/orders'),
+            apiClient.get<CashShift | null>('/shifts/current'),
+            apiClient.get<any>('/analytics/dashboard') // Fetch analytics data
+        ]);
+
+        setProducts(prods); setCustomers(custs); setSuppliers(supps);
+        setSalesHistory(history); setUsers(userList); setFinancials(financialData); 
+        setStockLevels(sLevels); setStockMovements(sMovements); setShiftHistory(shifts); 
+        setPurchaseOrders(pOrders); setAnalyticsData(analytics);
+        
+        setCurrentShift(activeShift);
+        if (!activeShift && user.role === 'Caixa') {
+            setShiftOpenModalVisible(true);
+        }
+    } catch (error) {
+        console.error("Failed to load initial data", error);
+        // Handle logout or show error message
+    } finally {
+        setIsLoadingData(false);
     }
-    setIsLoadingData(false);
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -180,29 +213,13 @@ const App: React.FC = () => {
     setStockMovements([]);
     setShiftHistory([]);
     setPurchaseOrders([]);
+    setAnalyticsData(null);
     setCart([]);
     setCurrentShift(null);
     setPaymentModalOpen(false);
     setSearchTerm('');
     setSelectedCustomer(null);
   }, []);
-
-
-  // --- SYNC LOGIC ---
-  const handleSync = useCallback(async () => {
-    if (isSyncing || !isOnline) return;
-    const queuedSales = syncApi.getQueuedSales();
-    if (queuedSales.length === 0) return;
-    setIsSyncing(true);
-    try {
-      const { syncedIds } = await syncApi.synchronizeSales(queuedSales);
-      syncApi.clearSyncedSales(syncedIds);
-      setPendingSalesCount(syncApi.getQueuedSales().length);
-    } catch (error) { console.error(error instanceof Error ? error.message : 'Erro de sincronização.');
-    } finally { setIsSyncing(false); }
-  }, [isSyncing, isOnline]);
-
-  useEffect(() => { if (isOnline) handleSync(); }, [isOnline, handleSync]);
 
   // --- PDV CART & DISCOUNT LOGIC ---
   const handleAddToCart = useCallback((product: Product, quantity: number = 1) => {
@@ -233,7 +250,7 @@ const App: React.FC = () => {
     setCart([]);
     setSelectedCustomer(null);
     setLoyaltyDiscount({ points: 0, amount: 0 });
-  }, [setCart, setSelectedCustomer, setLoyaltyDiscount]);
+  }, []);
 
   const handleOpenDiscountModal = useCallback((target: DiscountTarget) => {
       setDiscountTarget(target);
@@ -268,7 +285,7 @@ const App: React.FC = () => {
   const handleApplyLoyaltyPoints = useCallback((pointsToRedeem: number, discountAmount: number) => {
     setLoyaltyDiscount({ points: pointsToRedeem, amount: discountAmount });
     setLoyaltyModalOpen(false);
-  }, [setLoyaltyDiscount, setLoyaltyModalOpen]);
+  }, []);
 
 
   const { subtotal, promotionalDiscount, loyaltyDiscountAmount, total } = useMemo(() => {
@@ -278,13 +295,12 @@ const App: React.FC = () => {
       if (item.discount.type === 'fixed') {
         return sum + item.discount.amount;
       }
-      // percentage
       const itemTotal = item.price * item.quantity;
       return sum + (itemTotal * (item.discount.amount / 100));
     }, 0);
     const loyaltyDiscountAmount = loyaltyDiscount.amount;
-    const total = subtotal - promotionalDiscount - loyaltyDiscountAmount;
-    return { subtotal, promotionalDiscount, loyaltyDiscountAmount, total };
+    const totalValue = subtotal - promotionalDiscount - loyaltyDiscountAmount;
+    return { subtotal, promotionalDiscount, loyaltyDiscountAmount, total: totalValue };
   }, [cart, loyaltyDiscount]);
 
 
@@ -296,87 +312,80 @@ const App: React.FC = () => {
   const handleFinalizeSale = useCallback(async (payments: Payment[], changeGiven: number) => {
     try {
         const totalDiscountValue = promotionalDiscount + loyaltyDiscountAmount;
-        const saleId = uuidv4();
-
-        // Credit Sale ("Fiado") Logic
-        if (selectedCustomer && payments.some(p => p.method === 'Fiado')) {
-            const creditAmount = payments.find(p => p.method === 'Fiado')?.amount || 0;
-            const availableCredit = selectedCustomer.creditLimit - selectedCustomer.currentBalance;
-            if (creditAmount > availableCredit) {
-                // In a real app, show a proper UI alert
-                console.error("Venda a crédito excede o limite do cliente!");
-                alert(`Erro: Venda de ${creditAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} excede o limite de crédito disponível de ${availableCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`);
-                return;
-            }
-            await customerApi.updateCustomerBalance(selectedCustomer.id, creditAmount);
-            // FIX: The `addReceivable` function generates its own ID, so we remove the `id` property from the call to match the expected `Omit<AccountTransaction, 'id'>` type.
-            await financialApi.addReceivable({
-                customerId: selectedCustomer.id,
-                description: `Venda a crédito #${saleId.substring(0, 8)}`,
-                amount: creditAmount,
-                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days
-                status: 'Pendente',
-                type: 'receivable',
-            });
-            await refreshFinancials();
-        }
-
-        const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscountValue, payments);
-
         let pointsEarned = 0;
         if (selectedCustomer) {
-            pointsEarned = Math.floor(total / 10);
-            const pointsChange = pointsEarned - loyaltyDiscount.points;
-            if (pointsChange !== 0) {
-                await customerApi.updateCustomerPoints(selectedCustomer.id, pointsChange);
-            }
+            pointsEarned = Math.floor(total / 10); // Example: 1 point per R$10
         }
 
-        const saleRecord: SaleRecord = {
-            id: saleId, timestamp: new Date().toISOString(), items: cart,
-            total, payments, changeGiven, nfceXml: signedXml,
-            customerId: selectedCustomer?.id, customerName: selectedCustomer?.name,
-            totalDiscount: totalDiscountValue, loyaltyPointsEarned: pointsEarned,
-            loyaltyPointsRedeemed: loyaltyDiscount.points, loyaltyDiscountAmount: loyaltyDiscount.amount,
+        const salePayload = {
+            items: cart, total, payments, changeGiven,
+            customerId: selectedCustomer?.id,
+            totalDiscount: totalDiscountValue, 
+            loyaltyPointsEarned: pointsEarned,
+            loyaltyPointsRedeemed: loyaltyDiscount.points, 
+            loyaltyDiscountAmount: loyaltyDiscount.amount,
         };
 
-        syncApi.recordSale(saleRecord, isOnline);
-        const updatedShift = await cashRegisterApi.addSaleToShift(saleRecord);
+        const { saleRecord, updatedShift } = await apiClient.post<{ saleRecord: SaleRecord, updatedShift: CashShift }>('/sales', salePayload);
+
         setCurrentShift(updatedShift);
-
-        setPendingSalesCount(syncApi.getQueuedSales().length);
         setSalesHistory(prev => [...prev, saleRecord]);
+        
         await refreshInventoryData();
-        await refreshCustomers();
-
-        if (isOnline) handleSync();
+        if (selectedCustomer) {
+            await refreshCustomers(); // Refresh to get updated points/balance
+        }
+        if (payments.some(p => p.method === 'Fiado')) {
+            await refreshFinancials(); // Refresh to see new receivable
+        }
+        
         handleClearCart();
         setPaymentModalOpen(false);
 
     } catch (error) {
         console.error("Failed to finalize sale:", error);
-        alert(error instanceof Error ? error.message : "Ocorreu um erro desconhecido ao finalizar a venda.");
+        const errorMessage = (error as any)?.response?.data?.message || (error as Error).message;
+        alert(`Erro ao finalizar a venda: ${errorMessage}`);
     }
-  }, [cart, total, subtotal, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, isOnline, handleSync, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers, refreshFinancials]);
+  }, [cart, total, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers, refreshFinancials]);
 
   // --- SHIFT LOGIC ---
   const handleOpenShift = useCallback(async (openingBalance: number) => {
     if (!currentUser) return;
-    const newShift = await cashRegisterApi.openShift(openingBalance, { id: currentUser.id, name: currentUser.name });
-    setCurrentShift(newShift); setShiftOpenModalVisible(false);
+    try {
+        const newShift = await apiClient.post<CashShift>('/shifts/open', { openingBalance, userId: currentUser.id, userName: currentUser.name });
+        setCurrentShift(newShift); 
+        setShiftOpenModalVisible(false);
+    } catch (error) {
+        console.error("Failed to open shift", error);
+        alert("Não foi possível abrir o caixa.");
+    }
   }, [currentUser]);
 
   const handleCloseShift = useCallback(async (closingBalance: number) => {
       if (!currentShift) return;
-      await cashRegisterApi.closeShift(closingBalance);
-      setCurrentShift(null); await refreshShiftHistory();
-      setActiveShiftModal(null); setShiftOpenModalVisible(true);
+      try {
+        await apiClient.post('/shifts/close', { closingBalance });
+        setCurrentShift(null); 
+        await refreshShiftHistory();
+        setActiveShiftModal(null); 
+        setShiftOpenModalVisible(true);
+      } catch (error) {
+        console.error("Failed to close shift", error);
+        alert("Não foi possível fechar o caixa.");
+      }
   }, [currentShift, refreshShiftHistory]);
 
   const handleRecordShiftMovement = useCallback(async (amount: number, reason: string) => {
       if (!currentShift || !currentUser) return;
-      const updatedShift = await cashRegisterApi.recordMovement(movementType, amount, reason, {id: currentUser.id});
-      setCurrentShift(updatedShift); setActiveShiftModal(null);
+      try {
+        const updatedShift = await apiClient.post<CashShift>('/shifts/movement', { type: movementType, amount, reason, userId: currentUser.id });
+        setCurrentShift(updatedShift); 
+        setActiveShiftModal(null);
+      } catch (error) {
+        console.error("Failed to record movement", error);
+        alert("Não foi possível registrar a movimentação.");
+      }
   }, [currentShift, movementType, currentUser]);
 
   const openMovementModal = (type: 'Suprimento' | 'Sangria') => {
@@ -385,27 +394,20 @@ const App: React.FC = () => {
 
   // --- VOICE COMMAND LOGIC ---
   const handleVoiceCommand = useCallback(() => {
-    // FIX: Cast window to `any` to access non-standard SpeechRecognition APIs.
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setVoiceError("Reconhecimento de voz não é suportado neste navegador.");
       setVoiceStatus('error');
       return;
     }
-
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => setVoiceStatus('listening');
-    recognition.onend = () => {
-      if (voiceStatus !== 'processing') setVoiceStatus('idle');
-    };
-    recognition.onerror = (event: any) => {
-      setVoiceError(event.error);
-      setVoiceStatus('error');
-    };
+    recognition.onend = () => { if (voiceStatus !== 'processing') setVoiceStatus('idle'); };
+    recognition.onerror = (event: any) => { setVoiceError(event.error); setVoiceStatus('error'); };
 
     recognition.onresult = async (event: any) => {
       const command = event.results[0][0].transcript;
@@ -415,9 +417,7 @@ const App: React.FC = () => {
         if (itemsToAdd.length > 0) {
           itemsToAdd.forEach(item => {
             const product = products.find(p => p.name.toLowerCase() === item.productName.toLowerCase());
-            if (product) {
-              handleAddToCart(product, item.quantity);
-            }
+            if (product) handleAddToCart(product, item.quantity);
           });
         }
         setVoiceStatus('idle');
@@ -426,7 +426,6 @@ const App: React.FC = () => {
         setVoiceStatus('error');
       }
     };
-
     recognition.start();
   }, [products, handleAddToCart, voiceStatus]);
 
@@ -437,13 +436,9 @@ const App: React.FC = () => {
       const isAnyModalOpen = isPaymentModalOpen || isHomologationPanelOpen || !!activeShiftModal || isShiftOpenModalVisible || isCustomerSearchModalOpen || isDiscountModalOpen || isLoyaltyModalOpen;
       if (currentView !== 'pdv' || isAnyModalOpen) return;
 
-      if (event.key === 'F1') {
-        event.preventDefault(); document.getElementById('product-search-input')?.focus();
-      } else if (event.key === 'F2') {
-        event.preventDefault(); if (cart.length > 0) handleOpenPaymentModal();
-      } else if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
-        event.preventDefault(); if (cart.length > 0) handleClearCart();
-      }
+      if (event.key === 'F1') { event.preventDefault(); document.getElementById('product-search-input')?.focus();
+      } else if (event.key === 'F2') { event.preventDefault(); if (cart.length > 0) handleOpenPaymentModal();
+      } else if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) { event.preventDefault(); if (cart.length > 0) handleClearCart(); }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => { document.removeEventListener('keydown', handleKeyDown); };
@@ -451,68 +446,66 @@ const App: React.FC = () => {
   
   // --- ERP CRUD HANDLERS ---
   const handleAddProduct = useCallback(async (productData: Omit<Product, 'id'>) => {
-    await productApi.addProduct(productData); await refreshProducts(); await refreshInventoryData();
+    await apiClient.post('/products', productData); await refreshProducts(); await refreshInventoryData();
   }, [refreshProducts, refreshInventoryData]);
 
   const handleUpdateProduct = useCallback(async (productData: Product) => {
-    await productApi.updateProduct(productData); await refreshProducts();
+    await apiClient.put(`/products/${productData.id}`, productData); await refreshProducts();
   }, [refreshProducts]);
 
   const handleDeleteProduct = useCallback(async (productId: string) => {
-    await productApi.deleteProduct(productId); await refreshProducts(); await refreshInventoryData();
+    await apiClient.delete(`/products/${productId}`); await refreshProducts(); await refreshInventoryData();
   }, [refreshProducts, refreshInventoryData]);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt' | 'creditLimit' | 'currentBalance'>) => {
-    await customerApi.addCustomer(customerData); await refreshCustomers();
+    await apiClient.post('/customers', customerData); await refreshCustomers();
   }, [refreshCustomers]);
 
   const handleUpdateCustomer = useCallback(async (customerData: Customer) => {
-    await customerApi.updateCustomer(customerData); await refreshCustomers();
+    await apiClient.put(`/customers/${customerData.id}`, customerData); await refreshCustomers();
   }, [refreshCustomers]);
 
   const handleDeleteCustomer = useCallback(async (customerId: string) => {
-    await customerApi.deleteCustomer(customerId); await refreshCustomers();
+    await apiClient.delete(`/customers/${customerId}`); await refreshCustomers();
   }, [refreshCustomers]);
 
   const handleSettleCustomerDebt = useCallback(async (customerId: string) => {
-    await financialApi.settleCustomerDebts(customerId);
-    await customerApi.updateCustomerBalance(customerId, 0, true); // set balance to 0
+    await apiClient.post(`/financials/settle-debt/${customerId}`);
     await refreshFinancials();
     await refreshCustomers();
   }, [refreshFinancials, refreshCustomers]);
 
   const handleAddSupplier = useCallback(async (supplierData: Omit<Supplier, 'id'>) => {
-    await supplierApi.addSupplier(supplierData); await refreshSuppliers();
+    await apiClient.post('/suppliers', supplierData); await refreshSuppliers();
   }, [refreshSuppliers]);
   
   const handleUpdateSupplier = useCallback(async (supplierData: Supplier) => {
-    await supplierApi.updateSupplier(supplierData); await refreshSuppliers();
+    await apiClient.put(`/suppliers/${supplierData.id}`, supplierData); await refreshSuppliers();
   }, [refreshSuppliers]);
 
   const handleDeleteSupplier = useCallback(async (supplierId: string) => {
-    await supplierApi.deleteSupplier(supplierId); await refreshSuppliers();
+    await apiClient.delete(`/suppliers/${supplierId}`); await refreshSuppliers();
   }, [refreshSuppliers]);
 
   const handleAddUser = useCallback(async (userData: Omit<User, 'id'>) => {
-    await userApi.addUser(userData); await refreshUsers();
+    await apiClient.post('/users', userData); await refreshUsers();
   }, [refreshUsers]);
   
   const handleUpdateUser = useCallback(async (userData: User) => {
-    await userApi.updateUser(userData); await refreshUsers();
+    await apiClient.put(`/users/${userData.id}`, userData); await refreshUsers();
   }, [refreshUsers]);
 
   const handleDeleteUser = useCallback(async (userId: string) => {
-    await userApi.deleteUser(userId); await refreshUsers();
+    await apiClient.delete(`/users/${userId}`); await refreshUsers();
   }, [refreshUsers]);
   
   const handleAddPurchaseOrder = useCallback(async (orderData: Omit<PurchaseOrder, 'id' | 'status' | 'createdAt'>) => {
-    await purchasingApi.addPurchaseOrder(orderData);
+    await apiClient.post('/purchasing/orders', orderData);
     await refreshPurchaseOrders();
   }, [refreshPurchaseOrders]);
   
-  // FIX: The status update function should only accept the valid target statuses ('Recebido' or 'Cancelado') as defined in the API.
   const handleUpdatePurchaseOrderStatus = useCallback(async (orderId: string, status: 'Recebido' | 'Cancelado') => {
-    await purchasingApi.updatePurchaseOrderStatus(orderId, status);
+    await apiClient.patch(`/purchasing/orders/${orderId}/status`, { status });
     await refreshPurchaseOrders();
     if (status === 'Recebido') {
         await refreshInventoryData();
@@ -520,15 +513,22 @@ const App: React.FC = () => {
   }, [refreshPurchaseOrders, refreshInventoryData]);
 
   const handleUpdateTransactionStatus = useCallback(async (transactionId: string) => {
-    await financialApi.updateTransactionStatus(transactionId, 'Pago');
+    await apiClient.patch(`/financials/transactions/${transactionId}/status`, { status: 'Pago' });
     await refreshFinancials();
   }, [refreshFinancials]);
 
+  const handleProcessInventoryCount = useCallback(async (items: InventoryCountItem[]): Promise<InventoryReport> => {
+    const report = await apiClient.post<InventoryReport>('/inventory/count', { counts: items });
+    await refreshInventoryData();
+    return report;
+  }, [refreshInventoryData]);
 
-  // --- NF-e Import Handler ---
   const handleNFeImport = useCallback(async (file: File): Promise<NFeImportResult> => {
-    const xmlContent = await file.text();
-    const result = await nfeProcessor.processNFeFile(xmlContent);
+    const formData = new FormData();
+    formData.append('file', file);
+    // FIX: The `isFormData` argument was missing in the `apiClient.post` call,
+    // which is required for file uploads to be processed correctly by the backend.
+    const result = await apiClient.post<NFeImportResult>('/inventory/import-nfe', formData, true);
     await Promise.all([ refreshProducts(), refreshSuppliers(), refreshInventoryData() ]);
     return result;
   }, [refreshProducts, refreshSuppliers, refreshInventoryData]);
@@ -551,10 +551,11 @@ const App: React.FC = () => {
 
   const filteredProducts = products.filter(product => product.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  if (currentView === 'erp' && authApi.hasPermission(currentUser.role, 'view_dashboard')) {
+  if (currentView === 'erp' && hasPermission(currentUser.role, 'view_dashboard')) {
     return (
       <ERPDashboard
         currentUser={currentUser} 
+        analyticsData={analyticsData}
         products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct}
         customers={customers} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} onSettleCustomerDebt={handleSettleCustomerDebt}
         suppliers={suppliers} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier}
@@ -563,7 +564,7 @@ const App: React.FC = () => {
         financials={financials} onUpdateTransactionStatus={handleUpdateTransactionStatus}
         stockLevels={stockLevels} stockMovements={stockMovements}
         purchaseOrders={purchaseOrders} onAddPurchaseOrder={handleAddPurchaseOrder} onUpdatePurchaseOrderStatus={handleUpdatePurchaseOrderStatus}
-        onRefreshInventory={refreshInventoryData} onNFeImport={handleNFeImport}
+        onProcessInventoryCount={handleProcessInventoryCount} onNFeImport={handleNFeImport}
         onBackToPDV={() => setCurrentView('pdv')}
         onLogout={handleLogout}
       />
@@ -576,7 +577,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen font-sans bg-brand-primary text-brand-text">
       <PDVHeader
         isOnline={isOnline} onToggleOnline={() => setIsOnline(prev => !prev)}
-        pendingSalesCount={pendingSalesCount} isSyncing={isSyncing}
+        pendingSalesCount={0} isSyncing={isSyncing} // Offline sync logic removed for now
         onOpenHomologationPanel={() => setHomologationPanelOpen(true)}
         onOpenERP={() => setCurrentView('erp')}
         shiftStatus={currentShift?.status || 'Fechado'}

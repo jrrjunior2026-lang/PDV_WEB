@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import type { Product, InventoryCountItem, InventoryReport } from '../../types';
-import * as inventoryApi from '../../api/inventory';
 
 interface InventoryCountModalProps {
     products: Product[];
     onClose: () => void;
-    onSubmit: (report: InventoryReport) => void;
+    onSubmit: (items: InventoryCountItem[]) => Promise<void>;
 }
 
 const InventoryCountModal: React.FC<InventoryCountModalProps> = ({ products, onClose, onSubmit }) => {
@@ -18,23 +17,20 @@ const InventoryCountModal: React.FC<InventoryCountModalProps> = ({ products, onC
 
     const handleSubmit = async () => {
         setIsSubmitting(true);
-        // FIX: Refactored to use Object.keys to avoid potential type inference issues with Object.entries.
         const countItems: InventoryCountItem[] = Object.keys(counts)
             .map((productId) => ({
                 productId,
                 countedQuantity: parseInt(counts[productId], 10) || 0,
             }));
         
-        // Ensure all products are included, even if not touched
         products.forEach(p => {
             if (!countItems.find(ci => ci.productId === p.id)) {
                 countItems.push({ productId: p.id, countedQuantity: 0 });
             }
         });
 
-        const report = await inventoryApi.processInventoryCount(countItems);
+        await onSubmit(countItems);
         setIsSubmitting(false);
-        onSubmit(report);
     };
 
 

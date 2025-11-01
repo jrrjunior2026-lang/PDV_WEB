@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import * as authApi from '../api/auth';
+import apiClient from '../services/apiClient';
 import type { User } from '../types';
 import * as tokenService from '../services/tokenService';
 
@@ -81,7 +81,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }, [email, password, validate]);
 
     useEffect(() => {
-        // FIX: Replaced `NodeJS.Timeout` with `ReturnType<typeof setTimeout>` for browser compatibility, as the `NodeJS` namespace is not available in a browser environment.
         let timer: ReturnType<typeof setTimeout>;
         if (lockoutTimeRemaining !== null && lockoutTimeRemaining > 0) {
             timer = setTimeout(() => {
@@ -108,7 +107,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }, [email]);
 
     useEffect(() => {
-        // Check for lockout when email changes
         if(email) checkLockout();
     }, [email, checkLockout]);
 
@@ -117,30 +115,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         e.preventDefault();
         setLoginError(null);
 
-        if (!validate()) {
-            return;
-        }
-
-        if (checkLockout()) {
-            return;
-        }
+        if (!validate()) return;
+        if (checkLockout()) return;
 
         setIsLoading(true);
-        const result = await authApi.login(email);
-        
-        setTimeout(() => {
-            if (result) {
-                const { user, token } = result;
-                clearLoginAttempts(email.toLowerCase());
-                tokenService.saveToken(token); // Save the token
-                onLogin(user); // Pass the user object up
-            } else {
-                recordFailedAttempt(email.toLowerCase());
-                setLoginError('Credenciais inválidas ou usuário inativo.');
-                checkLockout(); // Check if this attempt caused a lockout
-            }
+        try {
+            const { user, token } = await apiClient.post<{ user: User; token: string }>('/auth/login', { email, password });
+            clearLoginAttempts(email.toLowerCase());
+            tokenService.saveToken(token);
+            onLogin(user);
+        } catch (error) {
+            recordFailedAttempt(email.toLowerCase());
+            const errorMessage = (error as any)?.response?.data?.message || 'Credenciais inválidas ou usuário inativo.';
+            setLoginError(errorMessage);
+            checkLockout();
+        } finally {
             setIsLoading(false);
-        }, 500);
+        }
     };
 
     const isFormValid = Object.keys(formErrors).length === 0;
@@ -191,9 +182,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     
                     <div className="text-xs text-brand-subtle text-center space-y-1 bg-brand-primary/50 p-3 rounded-md">
                         <p className="font-bold text-brand-text">Para testar:</p>
-                        <p>Admin: <strong>admin@pdv.com</strong></p>
-                        <p>Gerente: <strong>gerente@pdv.com</strong></p>
-                        <p>Caixa: <strong>caixa@pdv.com</strong></p>
+                        <p>Admin: <strong>admin@pdv.com</strong> (senha: 123456)</p>
+                        <p>Gerente: <strong>gerente@pdv.com</strong> (senha: 123456)</p>
+                        <p>Caixa: <strong>caixa@pdv.com</strong> (senha: 123456)</p>
                     </div>
 
                     <div>

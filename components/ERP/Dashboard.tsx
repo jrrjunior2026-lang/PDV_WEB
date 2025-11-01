@@ -1,6 +1,8 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission, PurchaseOrder } from '../../types';
+
+import React, { useState, useMemo } from 'react';
+// FIX: Add missing InventoryReport type to the import.
+import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission, PurchaseOrder, InventoryCountItem, InventoryReport } from '../../types';
 import ProductManagement from './ProductManagement';
 import SalesHistory from './SalesHistory';
 import UserManagement from './UserManagement';
@@ -11,8 +13,7 @@ import SupplierManagement from './SupplierManagement';
 import ShiftHistory from './ShiftHistory';
 import PurchaseOrderManagement from './PurchaseOrderManagement';
 import MainDashboard from './Dashboard/MainDashboard';
-import * as analyticsApi from '../../api/analytics';
-import * as authApi from '../../api/auth';
+import { hasPermission } from '../../services/authService';
 
 
 const ChartPieIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -42,7 +43,7 @@ const UserGroupIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 const BuildingStorefrontIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21V11.25m0-1.125c.381 0 .75.18 1.01.478.43.514.995.91 1.638 1.156 1.348.49 2.825.187 3.86-.702.554-.48.97-.995 1.242-1.53M12 10.125c-.381 0-.75.18-1.01.478-.43.514-.995.91-1.638 1.156-1.348.49-2.825.187-3.86-.702-.554-.48-.97-.995-1.242-1.53" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21V11.25m0-1.125c.381 0 .75.18 1.01.478.43.514.995.91 1.638 1.156 1.348.49 2.825.187 3.86-.702.554-.48-.97-.995 1.242-1.53M12 10.125c-.381 0-.75.18-1.01.478-.43.514-.995.91-1.638 1.156-1.348.49-2.825.187-3.86-.702-.554-.48-.97-.995-1.242-1.53" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-1.875m0 0a8.94 8.94 0 0 0-4.122-1.125 8.94 8.94 0 0 0-4.122 1.125M12 19.125a8.94 8.94 0 0 1 4.122-1.125 8.94 8.94 0 0 1 4.122 1.125M18 12.375a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h18M3 21h18" />
     </svg>
@@ -83,6 +84,7 @@ const ArrowRightOnRectangleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 interface ERPDashboardProps {
   currentUser: User | null;
+  analyticsData: any;
   products: Product[];
   onAddProduct: (product: Omit<Product, 'id'>) => Promise<void>;
   onUpdateProduct: (product: Product) => Promise<void>;
@@ -114,10 +116,9 @@ interface ERPDashboardProps {
   
   purchaseOrders: PurchaseOrder[];
   onAddPurchaseOrder: (orderData: Omit<PurchaseOrder, 'id' | 'status' | 'createdAt'>) => Promise<void>;
-  // FIX: The status update function should only accept the valid target statuses.
   onUpdatePurchaseOrderStatus: (orderId: string, status: 'Recebido' | 'Cancelado') => Promise<void>;
 
-  onRefreshInventory: () => Promise<void>;
+  onProcessInventoryCount: (items: InventoryCountItem[]) => Promise<InventoryReport>;
   onNFeImport: (file: File) => Promise<NFeImportResult>;
   onBackToPDV: () => void;
   onLogout: () => void;
@@ -127,24 +128,11 @@ type ERPView = 'dashboard' | 'products' | 'customers' | 'suppliers' | 'sales' | 
 
 const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   const [activeView, setActiveView] = useState<ERPView>('dashboard');
-  const [analyticsData, setAnalyticsData] = useState<any>(null);
-
-  useEffect(() => {
-      const fetchAnalytics = async () => {
-        if (props.salesHistory.length > 0 && props.customers.length > 0) {
-            const data = await analyticsApi.getDashboardData(props.salesHistory, props.customers, props.products, props.financials);
-            setAnalyticsData(data);
-        }
-      }
-      if (activeView === 'dashboard') {
-        fetchAnalytics();
-      }
-  }, [activeView, props.salesHistory, props.customers, props.products, props.financials]);
 
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-          return analyticsData ? <MainDashboard data={analyticsData} salesHistory={props.salesHistory} products={props.products} /> : <div className="text-center p-10">Carregando dados do dashboard...</div>;
+          return props.analyticsData ? <MainDashboard data={props.analyticsData} salesHistory={props.salesHistory} products={props.products} /> : <div className="text-center p-10">Carregando dados do dashboard...</div>;
       case 'products':
         return <ProductManagement 
             products={props.products} 
@@ -176,7 +164,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
             stockLevels={props.stockLevels} 
             stockMovements={props.stockMovements}
             products={props.products}
-            onInventoryUpdated={props.onRefreshInventory}
+            onProcessInventoryCount={props.onProcessInventoryCount}
             onNFeImport={props.onNFeImport}
         />;
       case 'users':
@@ -232,11 +220,10 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
 
   const visibleNavItems = useMemo(() => {
     if (!props.currentUser) return [];
-    return navItemsConfig.filter(item => authApi.hasPermission(props.currentUser!.role, item.permission));
+    return navItemsConfig.filter(item => hasPermission(props.currentUser!.role, item.permission));
   }, [props.currentUser]);
   
   const navSections = useMemo(() => {
-    // FIX: The `reduce` function was causing type inference issues. Replaced with a standard loop to ensure `navSections` is correctly typed, resolving the error on `items.map`.
     const sections: Record<string, typeof visibleNavItems> = {};
     for (const item of visibleNavItems) {
         if (!sections[item.section]) {
@@ -257,7 +244,6 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
         </div>
         <nav className="flex-grow">
           <ul className="space-y-4">
-            {/* FIX: Replaced Object.entries with Object.keys to avoid a type inference issue where the 'items' array was incorrectly typed as 'unknown'. */}
             {Object.keys(navSections).map((section) => (
                 <li key={section}>
                     <h3 className="px-3 text-xs font-semibold text-brand-subtle uppercase tracking-wider mb-2">{section}</h3>
