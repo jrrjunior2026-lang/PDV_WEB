@@ -13,6 +13,7 @@ import CloseShiftModal from './components/CloseShiftModal';
 import ShiftMovementModal from './components/ShiftMovementModal';
 import CustomerSearchModal from './components/CustomerSearchModal';
 import DiscountModal from './components/DiscountModal';
+import LoyaltyRedemptionModal from './components/LoyaltyRedemptionModal';
 
 
 import * as productApi from './api/products';
@@ -53,11 +54,13 @@ const App: React.FC = () => {
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState({ points: 0, amount: 0 });
 
   // Modals State
   const [isCustomerSearchModalOpen, setCustomerSearchModalOpen] = useState(false);
   const [isDiscountModalOpen, setDiscountModalOpen] = useState(false);
   const [discountTarget, setDiscountTarget] = useState<DiscountTarget | null>(null);
+  const [isLoyaltyModalOpen, setLoyaltyModalOpen] = useState(false);
 
   // Shift State
   const [currentShift, setCurrentShift] = useState<CashShift | null>(null);
@@ -114,7 +117,7 @@ const App: React.FC = () => {
     const loadInitialData = async () => {
       // Simulate user login
       // Change to 'user-2' to test 'Caixa' role permissions
-      const user = await authApi.getCurrentUser('user-1');
+      const user = await authApi.getCurrentUser('user-2');
       setCurrentUser(user);
 
       const activeShift = await cashRegisterApi.getCurrentShift();
@@ -180,6 +183,7 @@ const App: React.FC = () => {
   const handleClearCart = useCallback(() => {
     setCart([]);
     setSelectedCustomer(null);
+    setLoyaltyDiscount({ points: 0, amount: 0 });
   }, []);
 
   const handleOpenDiscountModal = useCallback((target: DiscountTarget) => {
@@ -212,10 +216,15 @@ const App: React.FC = () => {
       setDiscountTarget(null);
   }, [cart, discountTarget]);
 
+  const handleApplyLoyaltyPoints = useCallback((pointsToRedeem: number, discountAmount: number) => {
+    setLoyaltyDiscount({ points: pointsToRedeem, amount: discountAmount });
+    setLoyaltyModalOpen(false);
+  }, []);
 
-  const { subtotal, totalDiscount, total } = useMemo(() => {
+
+  const { subtotal, promotionalDiscount, loyaltyDiscountAmount, total } = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const totalDiscount = cart.reduce((sum, item) => {
+    const promotionalDiscount = cart.reduce((sum, item) => {
       if (!item.discount) return sum;
       if (item.discount.type === 'fixed') {
         return sum + item.discount.amount;
@@ -224,9 +233,10 @@ const App: React.FC = () => {
       const itemTotal = item.price * item.quantity;
       return sum + (itemTotal * (item.discount.amount / 100));
     }, 0);
-    const total = subtotal - totalDiscount;
-    return { subtotal, totalDiscount, total };
-  }, [cart]);
+    const loyaltyDiscountAmount = loyaltyDiscount.amount;
+    const total = subtotal - promotionalDiscount - loyaltyDiscountAmount;
+    return { subtotal, promotionalDiscount, loyaltyDiscountAmount, total };
+  }, [cart, loyaltyDiscount]);
 
 
   // --- PDV TRANSACTION LOGIC ---
@@ -236,13 +246,19 @@ const App: React.FC = () => {
 
   const handleFinalizeSale = useCallback(async (payments: Payment[], changeGiven: number) => {
     try {
-        const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscount);
+        const totalDiscountValue = promotionalDiscount + loyaltyDiscountAmount;
+        const signedXml = await generateAndSignNfce(cart, subtotal, totalDiscountValue);
 
         let pointsEarned = 0;
         if (selectedCustomer) {
+            // Earn points
             pointsEarned = Math.floor(total / 10); // 1 point for every R$10
-            if (pointsEarned > 0) {
-                const updatedCustomer = await customerApi.updateCustomerPoints(selectedCustomer.id, pointsEarned);
+            
+            // Redeem points
+            const pointsChange = pointsEarned - loyaltyDiscount.points;
+
+            if (pointsChange !== 0) {
+                const updatedCustomer = await customerApi.updateCustomerPoints(selectedCustomer.id, pointsChange);
                 setSelectedCustomer(updatedCustomer); // Refresh customer data in UI
                 refreshCustomers();
             }
@@ -258,8 +274,10 @@ const App: React.FC = () => {
             nfceXml: signedXml,
             customerId: selectedCustomer?.id,
             customerName: selectedCustomer?.name,
-            totalDiscount,
+            totalDiscount: totalDiscountValue,
             loyaltyPointsEarned: pointsEarned,
+            loyaltyPointsRedeemed: loyaltyDiscount.points,
+            loyaltyDiscountAmount: loyaltyDiscount.amount,
         };
 
         syncApi.recordSale(saleRecord, isOnline);
@@ -277,7 +295,7 @@ const App: React.FC = () => {
     } catch (error) {
         console.error("Failed to finalize sale:", error);
     }
-  }, [cart, total, subtotal, totalDiscount, isOnline, handleSync, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers]);
+  }, [cart, total, subtotal, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, isOnline, handleSync, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers]);
 
   // --- SHIFT LOGIC ---
   const handleOpenShift = useCallback(async (openingBalance: number) => {
@@ -306,7 +324,7 @@ const App: React.FC = () => {
   // --- KEYBOARD SHORTCUTS ---
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isAnyModalOpen = isPaymentModalOpen || isHomologationPanelOpen || !!activeShiftModal || isShiftOpenModalVisible || isCustomerSearchModalOpen || isDiscountModalOpen;
+      const isAnyModalOpen = isPaymentModalOpen || isHomologationPanelOpen || !!activeShiftModal || isShiftOpenModalVisible || isCustomerSearchModalOpen || isDiscountModalOpen || isLoyaltyModalOpen;
       if (currentView !== 'pdv' || isAnyModalOpen) return;
 
       if (event.key === 'F1') {
@@ -319,7 +337,7 @@ const App: React.FC = () => {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => { document.removeEventListener('keydown', handleKeyDown); };
-  }, [currentView, cart.length, handleClearCart, isPaymentModalOpen, isHomologationPanelOpen, activeShiftModal, isShiftOpenModalVisible, isCustomerSearchModalOpen, isDiscountModalOpen]);
+  }, [currentView, cart.length, handleClearCart, isPaymentModalOpen, isHomologationPanelOpen, activeShiftModal, isShiftOpenModalVisible, isCustomerSearchModalOpen, isDiscountModalOpen, isLoyaltyModalOpen]);
   
   // --- ERP CRUD HANDLERS ---
   const handleAddProduct = useCallback(async (productData: Omit<Product, 'id'>) => {
@@ -445,7 +463,8 @@ const App: React.FC = () => {
           <CartDisplay
             items={cart}
             subtotal={subtotal}
-            totalDiscount={totalDiscount}
+            promotionalDiscount={promotionalDiscount}
+            loyaltyDiscount={loyaltyDiscountAmount}
             total={total}
             selectedCustomer={selectedCustomer}
             onUpdateQuantity={handleUpdateQuantity}
@@ -453,6 +472,7 @@ const App: React.FC = () => {
             onPay={handleOpenPaymentModal}
             onSelectCustomer={() => setCustomerSearchModalOpen(true)}
             onApplyDiscount={handleOpenDiscountModal}
+            onRedeemPoints={() => setLoyaltyModalOpen(true)}
           />
         </aside>
       </main>
@@ -483,6 +503,15 @@ const App: React.FC = () => {
               target={discountTarget}
               onClose={() => setDiscountModalOpen(false)}
               onSubmit={handleApplyDiscount}
+          />
+      )}
+
+      {isLoyaltyModalOpen && selectedCustomer && (
+          <LoyaltyRedemptionModal
+              customer={selectedCustomer}
+              cartTotal={total + loyaltyDiscountAmount} // Pass total before loyalty discount
+              onClose={() => setLoyaltyModalOpen(false)}
+              onSubmit={handleApplyLoyaltyPoints}
           />
       )}
 

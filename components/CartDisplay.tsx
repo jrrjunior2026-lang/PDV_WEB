@@ -4,7 +4,8 @@ import type { CartItem, Customer } from '../types';
 interface CartDisplayProps {
   items: CartItem[];
   subtotal: number;
-  totalDiscount: number;
+  promotionalDiscount: number;
+  loyaltyDiscount: number;
   total: number;
   selectedCustomer: Customer | null;
   onUpdateQuantity: (productId: string, quantity: number) => void;
@@ -12,6 +13,7 @@ interface CartDisplayProps {
   onPay: () => void;
   onSelectCustomer: () => void;
   onApplyDiscount: (target: { type: 'item', itemId: string } | { type: 'total' }) => void;
+  onRedeemPoints: () => void;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -25,9 +27,15 @@ const UserPlusIcon = (props: React.SVGProps<SVGSVGElement>) => (
 const TagIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}><path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6Z" /></svg>
 );
+const GiftIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12.75 6.375a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM12.75 6.375v4.5m-9-4.5h9m-9 4.5h9m0-4.5v4.5m0 0v4.5m-4.5-4.5h4.5m-4.5 4.5h4.5m1.5-4.5h4.5m-4.5 4.5h4.5m4.5-4.5h-4.5m-4.5 0h4.5" />
+  </svg>
+);
 
 
-const CartDisplay: React.FC<CartDisplayProps> = ({ items, subtotal, totalDiscount, total, selectedCustomer, onUpdateQuantity, onClearCart, onPay, onSelectCustomer, onApplyDiscount }) => {
+
+const CartDisplay: React.FC<CartDisplayProps> = ({ items, subtotal, promotionalDiscount, loyaltyDiscount, total, selectedCustomer, onUpdateQuantity, onClearCart, onPay, onSelectCustomer, onApplyDiscount, onRedeemPoints }) => {
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-brand-border">
@@ -38,7 +46,7 @@ const CartDisplay: React.FC<CartDisplayProps> = ({ items, subtotal, totalDiscoun
             </button>
         </div>
         {selectedCustomer ? (
-            <div className="mt-3 bg-brand-primary/50 p-3 rounded-lg text-sm">
+            <div className="mt-3 bg-brand-primary/50 p-3 rounded-lg text-sm space-y-2">
                 <div className="flex justify-between items-center">
                     <div>
                         <p className="font-semibold text-brand-text">{selectedCustomer.name}</p>
@@ -49,6 +57,12 @@ const CartDisplay: React.FC<CartDisplayProps> = ({ items, subtotal, totalDiscoun
                         <button onClick={() => onSelectCustomer()} className="text-xs text-blue-400 hover:underline">Trocar</button>
                     </div>
                 </div>
+                {selectedCustomer.loyaltyPoints > 0 && (
+                    <button onClick={onRedeemPoints} className="w-full flex items-center justify-center gap-2 bg-yellow-600/20 text-yellow-300 hover:bg-yellow-600/40 p-2 rounded-lg text-xs font-semibold">
+                       <GiftIcon className="w-4 h-4" />
+                       Resgatar Pontos
+                    </button>
+                )}
             </div>
         ) : (
             <button onClick={onSelectCustomer} className="mt-3 w-full flex items-center justify-center gap-2 bg-brand-accent/10 text-brand-accent hover:bg-brand-accent/20 p-2 rounded-lg text-sm font-semibold">
@@ -110,9 +124,15 @@ const CartDisplay: React.FC<CartDisplayProps> = ({ items, subtotal, totalDiscoun
                 <span className="font-semibold">{subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
             </div>
              <div className="flex justify-between items-center">
-                <span className="text-brand-subtle">Descontos:</span>
-                <span className="font-semibold text-green-400">-{totalDiscount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                <span className="text-brand-subtle">Descontos Promocionais:</span>
+                <span className="font-semibold text-green-400">-{promotionalDiscount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
             </div>
+            {loyaltyDiscount > 0 && (
+                <div className="flex justify-between items-center">
+                    <span className="text-brand-subtle">Desconto Fidelidade:</span>
+                    <span className="font-semibold text-yellow-400">-{loyaltyDiscount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                </div>
+            )}
         </div>
 
         <div className="flex justify-between items-center text-2xl font-bold mb-4">

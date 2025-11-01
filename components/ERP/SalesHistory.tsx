@@ -18,14 +18,15 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Data / Hora</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Cliente</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Pagamento</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Itens</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Total</th>
+              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-brand-subtle uppercase tracking-wider">Descontos</th>
+              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-brand-subtle uppercase tracking-wider">Itens</th>
+              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-brand-subtle uppercase tracking-wider">Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-border">
             {sortedSales.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-brand-subtle">
+                <td colSpan={6} className="text-center py-10 text-brand-subtle">
                   Nenhuma venda registrada ainda.
                 </td>
               </tr>
@@ -39,12 +40,22 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ sales }) => {
                   <div className="text-sm text-brand-subtle">{sale.customerName || 'Não identificado'}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-brand-subtle">{sale.payments.map(p => p.method).join(', ')}</div>
+                  <div className="text-sm text-brand-subtle flex items-center gap-2">
+                    {sale.payments.map(p => p.method).join(', ')}
+                    {sale.loyaltyPointsRedeemed > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-yellow-900/50 text-yellow-300" title={`${sale.loyaltyPointsRedeemed} pontos resgatados`}>
+                            Pontos
+                        </span>
+                    )}
+                  </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-text">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-400 font-semibold text-right">
+                  {sale.totalDiscount > 0 ? `-${sale.totalDiscount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : 'R$ 0,00'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-text text-right">
                   {sale.items.reduce((sum, item) => sum + item.quantity, 0)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-accent font-semibold">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-accent font-semibold text-right">
                   {sale.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </td>
               </tr>

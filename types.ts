@@ -61,6 +61,8 @@ export interface SaleRecord {
   customerName?: string;
   totalDiscount: number;
   loyaltyPointsEarned: number;
+  loyaltyPointsRedeemed: number;
+  loyaltyDiscountAmount: number;
 }
 
 export type UserRole = 'Admin' | 'Caixa';
