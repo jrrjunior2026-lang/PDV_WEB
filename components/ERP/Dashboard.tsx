@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission, PurchaseOrder } from '../../types';
 import ProductManagement from './ProductManagement';
@@ -75,6 +73,12 @@ const ClipboardDocumentListIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const ArrowRightOnRectangleIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+    </svg>
+);
+
 
 
 interface ERPDashboardProps {
@@ -104,6 +108,7 @@ interface ERPDashboardProps {
   onDeleteUser: (userId: string) => Promise<void>;
 
   financials: AccountTransaction[];
+  onUpdateTransactionStatus: (transactionId: string) => Promise<void>;
   stockLevels: StockLevel[];
   stockMovements: StockMovement[];
   
@@ -115,6 +120,7 @@ interface ERPDashboardProps {
   onRefreshInventory: () => Promise<void>;
   onNFeImport: (file: File) => Promise<NFeImportResult>;
   onBackToPDV: () => void;
+  onLogout: () => void;
 }
 
 type ERPView = 'dashboard' | 'products' | 'customers' | 'suppliers' | 'sales' | 'shifts' | 'users' | 'financials' | 'inventory' | 'purchasing';
@@ -126,14 +132,14 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
   useEffect(() => {
       const fetchAnalytics = async () => {
         if (props.salesHistory.length > 0 && props.customers.length > 0) {
-            const data = await analyticsApi.getDashboardData(props.salesHistory, props.customers, props.products);
+            const data = await analyticsApi.getDashboardData(props.salesHistory, props.customers, props.products, props.financials);
             setAnalyticsData(data);
         }
       }
       if (activeView === 'dashboard') {
         fetchAnalytics();
       }
-  }, [activeView, props.salesHistory, props.customers, props.products]);
+  }, [activeView, props.salesHistory, props.customers, props.products, props.financials]);
 
   const renderContent = () => {
     switch (activeView) {
@@ -181,7 +187,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
             onDelete={props.onDeleteUser}
         />;
       case 'financials':
-        return <Financials transactions={props.financials} />;
+        return <Financials transactions={props.financials} onUpdateStatus={props.onUpdateTransactionStatus} />;
       case 'purchasing':
         return <PurchaseOrderManagement
             purchaseOrders={props.purchaseOrders}
@@ -249,7 +255,7 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
             <h1 className="text-2xl font-bold text-white">Painel ERP</h1>
             <p className="text-sm text-brand-subtle">Administração</p>
         </div>
-        <nav>
+        <nav className="flex-grow">
           <ul className="space-y-4">
             {/* FIX: Replaced Object.entries with Object.keys to avoid a type inference issue where the 'items' array was incorrectly typed as 'unknown'. */}
             {Object.keys(navSections).map((section) => (
@@ -262,13 +268,22 @@ const ERPDashboard: React.FC<ERPDashboardProps> = (props) => {
             ))}
           </ul>
         </nav>
-        <button
-          onClick={props.onBackToPDV}
-          className="mt-auto flex items-center justify-center gap-2 w-full p-3 bg-brand-border rounded-md hover:bg-brand-accent/50 transition-colors"
-        >
-          <ArrowUturnLeftIcon className="w-5 h-5" />
-          <span className="font-semibold">Voltar ao PDV</span>
-        </button>
+        <div className="mt-auto space-y-2">
+            <button
+            onClick={props.onBackToPDV}
+            className="flex items-center justify-center gap-2 w-full p-3 bg-brand-border rounded-md hover:bg-brand-accent/50 transition-colors"
+            >
+            <ArrowUturnLeftIcon className="w-5 h-5" />
+            <span className="font-semibold">Voltar ao PDV</span>
+            </button>
+            <button
+                onClick={props.onLogout}
+                className="flex items-center justify-center gap-2 w-full p-3 bg-brand-border rounded-md text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+            >
+                <ArrowRightOnRectangleIcon className="w-5 h-5" />
+                <span className="font-semibold">Sair</span>
+            </button>
+        </div>
       </aside>
       <main className="flex-1 p-6 overflow-y-auto">
         {props.currentUser ? renderContent() : <div className="text-center p-10">Carregando usuário...</div>}

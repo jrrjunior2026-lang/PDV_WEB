@@ -1,11 +1,13 @@
+
 import React from 'react';
 import type { AccountTransaction } from '../../types';
 
 interface FinancialsProps {
   transactions: AccountTransaction[];
+  onUpdateStatus: (transactionId: string) => void;
 }
 
-const FinancialsTable: React.FC<{ title: string; data: AccountTransaction[] }> = ({ title, data }) => {
+const FinancialsTable: React.FC<{ title: string; data: AccountTransaction[], onUpdateStatus: (transactionId: string) => void; }> = ({ title, data, onUpdateStatus }) => {
     
     const getStatusColor = (status: 'Pendente' | 'Pago' | 'Atrasado') => {
         switch (status) {
@@ -25,6 +27,7 @@ const FinancialsTable: React.FC<{ title: string; data: AccountTransaction[] }> =
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Vencimento</th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-brand-subtle uppercase tracking-wider">Status</th>
                         <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-brand-subtle uppercase tracking-wider">Valor</th>
+                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-brand-subtle uppercase tracking-wider">Ações</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-brand-border">
@@ -38,6 +41,16 @@ const FinancialsTable: React.FC<{ title: string; data: AccountTransaction[] }> =
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-brand-accent">
                                 {item.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                             </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                                {(item.status === 'Pendente' || item.status === 'Atrasado') && (
+                                    <button
+                                        onClick={() => onUpdateStatus(item.id)}
+                                        className="px-3 py-1 text-xs font-semibold rounded-md bg-green-600/20 text-green-300 hover:bg-green-600/40"
+                                    >
+                                        Marcar como Pago
+                                    </button>
+                                )}
+                            </td>
                         </tr>
                     ))}
                 </tbody>
@@ -46,7 +59,7 @@ const FinancialsTable: React.FC<{ title: string; data: AccountTransaction[] }> =
     );
 }
 
-const Financials: React.FC<FinancialsProps> = ({ transactions }) => {
+const Financials: React.FC<FinancialsProps> = ({ transactions, onUpdateStatus }) => {
   const payable = transactions.filter(t => t.type === 'payable');
   const receivable = transactions.filter(t => t.type === 'receivable');
 
@@ -54,8 +67,8 @@ const Financials: React.FC<FinancialsProps> = ({ transactions }) => {
     <div>
       <h2 className="text-3xl font-bold text-white mb-6">Módulo Financeiro</h2>
       <div className="space-y-8">
-        <FinancialsTable title="Contas a Pagar" data={payable} />
-        <FinancialsTable title="Contas a Receber" data={receivable} />
+        <FinancialsTable title="Contas a Pagar" data={payable} onUpdateStatus={onUpdateStatus} />
+        <FinancialsTable title="Contas a Receber" data={receivable} onUpdateStatus={onUpdateStatus} />
       </div>
     </div>
   );

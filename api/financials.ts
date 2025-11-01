@@ -1,3 +1,4 @@
+
 import { v4 as uuidv4 } from 'uuid';
 import type { AccountTransaction } from '../types';
 
@@ -63,5 +64,19 @@ export const settleCustomerDebts = (customerId: string): Promise<void> => {
         });
         saveToStorage(financials);
         resolve();
+    });
+};
+
+export const updateTransactionStatus = (transactionId: string, status: 'Pago'): Promise<AccountTransaction> => {
+    return new Promise((resolve, reject) => {
+        const financials = getFromStorage();
+        const index = financials.findIndex(t => t.id === transactionId);
+        if (index === -1) {
+            return reject(new Error('Transaction not found'));
+        }
+        const updatedTransaction = { ...financials[index], status };
+        financials[index] = updatedTransaction;
+        saveToStorage(financials);
+        resolve(updatedTransaction);
     });
 };

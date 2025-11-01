@@ -33,6 +33,12 @@ const CogIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const ArrowRightOnRectangleIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+    </svg>
+);
+
 const Spinner = ({ className }: { className?: string }) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -53,9 +59,10 @@ interface PDVHeaderProps {
     onSuprimento: () => void;
     onSangria: () => void;
     currentUser: User | null;
+    onLogout: () => void;
 }
 
-const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP, shiftStatus, onCloseShift, onSuprimento, onSangria, currentUser }) => {
+const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pendingSalesCount, isSyncing, onOpenHomologationPanel, onOpenERP, shiftStatus, onCloseShift, onSuprimento, onSangria, currentUser, onLogout }) => {
     const [time, setTime] = useState(new Date());
     const isShiftOpen = shiftStatus === 'Aberto';
     const canViewDashboard = currentUser && hasPermission(currentUser.role, 'view_dashboard');
@@ -98,48 +105,57 @@ const PDVHeader: React.FC<PDVHeaderProps> = ({ isOnline, onToggleOnline, pending
                     <span className={`text-sm font-semibold ${isShiftOpen ? 'text-green-400' : 'text-red-400'}`}>Caixa {shiftStatus}</span>
                 </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
                     <button onClick={onSuprimento} disabled={!isShiftOpen} className="text-sm bg-blue-600/50 text-blue-300 px-3 py-1.5 rounded-md hover:bg-blue-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Suprimento</button>
                     <button onClick={onSangria} disabled={!isShiftOpen} className="text-sm bg-yellow-600/50 text-yellow-300 px-3 py-1.5 rounded-md hover:bg-yellow-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Sangria</button>
                     <button onClick={onCloseShift} disabled={!isShiftOpen} className="text-sm bg-red-600/50 text-red-300 px-3 py-1.5 rounded-md hover:bg-red-600/80 disabled:opacity-50 disabled:cursor-not-allowed">Fechar Caixa</button>
                 </div>
-                {canViewDashboard && (
-                    <>
-                        <div className="w-px h-6 bg-brand-border"></div>
-                        <button 
-                          onClick={onOpenERP}
-                          className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
-                          title="Painel ERP"
-                        >
-                            <CogIcon className="w-6 h-6" />
+                
+                <div className="flex items-center gap-4">
+                    {canViewDashboard && (
+                        <>
+                            <div className="w-px h-6 bg-brand-border"></div>
+                            <button 
+                            onClick={onOpenERP}
+                            className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
+                            title="Painel ERP"
+                            >
+                                <CogIcon className="w-6 h-6" />
+                            </button>
+                            <button 
+                            onClick={onOpenHomologationPanel}
+                            className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
+                            title="Painel de Homologação"
+                            >
+                                <ClipboardDocumentCheckIcon className="w-6 h-6" />
+                            </button>
+                        </>
+                    )}
+                    {renderSyncStatus()}
+                    <div className="flex items-center gap-2 text-brand-subtle">
+                        <ClockIcon className="w-5 h-5" />
+                        <span className="text-sm font-mono">{time.toLocaleTimeString('pt-BR')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className={`text-sm font-semibold ${isOnline ? 'text-green-500' : 'text-red-500'}`}>
+                            {isOnline ? 'ONLINE' : 'OFFLINE'}
+                        </span>
+                        <label htmlFor="online-toggle" className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="online-toggle" className="sr-only peer" checked={isOnline} onChange={onToggleOnline} />
+                            <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                        </label>
+                    </div>
+                     <div className="w-px h-6 bg-brand-border"></div>
+                     <div className="flex items-center gap-3">
+                        <div className="text-right">
+                             <div className="text-sm font-semibold text-brand-text">{currentUser?.name}</div>
+                             <div className="text-xs text-brand-subtle">{currentUser?.role}</div>
+                        </div>
+                        <button onClick={onLogout} className="text-brand-subtle hover:text-red-500 transition-colors" title="Sair">
+                            <ArrowRightOnRectangleIcon className="w-6 h-6" />
                         </button>
-                         <button 
-                          onClick={onOpenHomologationPanel}
-                          className="flex items-center gap-2 text-brand-subtle hover:text-brand-accent transition-colors"
-                          title="Painel de Homologação"
-                        >
-                            <ClipboardDocumentCheckIcon className="w-6 h-6" />
-                        </button>
-                    </>
-                )}
-                {renderSyncStatus()}
-                <div className="flex items-center gap-2 text-brand-subtle">
-                    <UserIcon className="w-5 h-5" />
-                    <span className="text-sm">{currentUser?.name || 'Carregando...'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-brand-subtle">
-                    <ClockIcon className="w-5 h-5" />
-                    <span className="text-sm font-mono">{time.toLocaleTimeString('pt-BR')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className={`text-sm font-semibold ${isOnline ? 'text-green-500' : 'text-red-500'}`}>
-                        {isOnline ? 'ONLINE' : 'OFFLINE'}
-                    </span>
-                    <label htmlFor="online-toggle" className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="online-toggle" className="sr-only peer" checked={isOnline} onChange={onToggleOnline} />
-                        <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                    </label>
+                    </div>
                 </div>
             </div>
         </header>

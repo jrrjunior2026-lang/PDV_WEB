@@ -68,7 +68,7 @@ export interface SaleRecord {
   loyaltyDiscountAmount: number;
 }
 
-export type UserRole = 'Admin' | 'Caixa';
+export type UserRole = 'Admin' | 'Gerente' | 'Caixa';
 
 export interface User {
     id: string;

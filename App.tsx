@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder } from './types';
@@ -18,6 +16,7 @@ import CustomerSearchModal from './components/CustomerSearchModal';
 import DiscountModal from './components/DiscountModal';
 import LoyaltyRedemptionModal from './components/LoyaltyRedemptionModal';
 import VoiceCommandControl, { VoiceStatus } from './components/VoiceCommandControl';
+import Login from './components/Login';
 
 
 import * as productApi from './api/products';
@@ -43,6 +42,7 @@ const App: React.FC = () => {
   // Global State
   const [currentView, setCurrentView] = useState<AppView>('pdv');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   
   // ERP Data State
   const [products, setProducts] = useState<Product[]>([]);
@@ -133,32 +133,56 @@ const App: React.FC = () => {
   }, []);
 
 
-  // --- DATA FETCHING & AUTH ---
-  useEffect(() => {
-    const loadInitialData = async () => {
-      // Simulate user login
-      // Change to 'user-1' to test 'Admin' role permissions
-      const user = await authApi.getCurrentUser('user-1'); 
-      setCurrentUser(user);
+  // --- AUTH & DATA LOADING ---
+  const handleLogin = useCallback(async (user: User) => {
+    setIsLoadingData(true);
+    setCurrentUser(user);
 
-      const activeShift = await cashRegisterApi.getCurrentShift();
-      setCurrentShift(activeShift);
-      if (!activeShift) setShiftOpenModalVisible(true);
+    if (user.role === 'Caixa') {
+        setCurrentView('pdv');
+    } else {
+        setCurrentView('erp');
+    }
 
-      const [ prods, custs, supps, queuedSales, history, userList, financialData, sLevels, sMovements, shifts, pOrders ] = await Promise.all([
-        productApi.getProducts(), customerApi.getCustomers(), supplierApi.getSuppliers(),
-        syncApi.getQueuedSales(), syncApi.getSalesHistory(), userApi.getUsers(),
-        financialApi.getFinancials(), inventoryApi.getStockLevels(), inventoryApi.getStockMovements(),
-        cashRegisterApi.getShiftHistory(), purchasingApi.getPurchaseOrders()
-      ]);
+    const [ prods, custs, supps, queuedSales, history, userList, financialData, sLevels, sMovements, shifts, pOrders ] = await Promise.all([
+      productApi.getProducts(), customerApi.getCustomers(), supplierApi.getSuppliers(),
+      syncApi.getQueuedSales(), syncApi.getSalesHistory(), userApi.getUsers(),
+      financialApi.getFinancials(), inventoryApi.getStockLevels(), inventoryApi.getStockMovements(),
+      cashRegisterApi.getShiftHistory(), purchasingApi.getPurchaseOrders()
+    ]);
 
-      setProducts(prods); setCustomers(custs); setSuppliers(supps);
-      setPendingSalesCount(queuedSales.length); setSalesHistory(history);
-      setUsers(userList); setFinancials(financialData); setStockLevels(sLevels);
-      setStockMovements(sMovements); setShiftHistory(shifts); setPurchaseOrders(pOrders);
-    };
-    loadInitialData();
+    setProducts(prods); setCustomers(custs); setSuppliers(supps);
+    setPendingSalesCount(queuedSales.length); setSalesHistory(history);
+    setUsers(userList); setFinancials(financialData); setStockLevels(sLevels);
+    setStockMovements(sMovements); setShiftHistory(shifts); setPurchaseOrders(pOrders);
+    
+    const activeShift = await cashRegisterApi.getCurrentShift();
+    setCurrentShift(activeShift);
+    if (!activeShift && user.role === 'Caixa') {
+        setShiftOpenModalVisible(true);
+    }
+    setIsLoadingData(false);
   }, []);
+
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    setProducts([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setSalesHistory([]);
+    setUsers([]);
+    setFinancials([]);
+    setStockLevels([]);
+    setStockMovements([]);
+    setShiftHistory([]);
+    setPurchaseOrders([]);
+    setCart([]);
+    setCurrentShift(null);
+    setPaymentModalOpen(false);
+    setSearchTerm('');
+    setSelectedCustomer(null);
+  }, []);
+
 
   // --- SYNC LOGIC ---
   const handleSync = useCallback(async () => {
@@ -491,6 +515,11 @@ const App: React.FC = () => {
     }
   }, [refreshPurchaseOrders, refreshInventoryData]);
 
+  const handleUpdateTransactionStatus = useCallback(async (transactionId: string) => {
+    await financialApi.updateTransactionStatus(transactionId, 'Pago');
+    await refreshFinancials();
+  }, [refreshFinancials]);
+
 
   // --- NF-e Import Handler ---
   const handleNFeImport = useCallback(async (file: File): Promise<NFeImportResult> => {
@@ -502,9 +531,23 @@ const App: React.FC = () => {
 
 
   // --- RENDER LOGIC ---
+  if (!currentUser) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  if (isLoadingData) {
+    return (
+        <div className="flex h-screen w-full flex-col items-center justify-center bg-brand-primary text-white">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-accent mb-4"></div>
+            <p>Carregando dados...</p>
+            <p className="text-sm text-brand-subtle">Bem-vindo(a), {currentUser.name}!</p>
+        </div>
+    );
+  }
+
   const filteredProducts = products.filter(product => product.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  if (currentView === 'erp') {
+  if (currentView === 'erp' && authApi.hasPermission(currentUser.role, 'view_dashboard')) {
     return (
       <ERPDashboard
         currentUser={currentUser} 
@@ -513,10 +556,12 @@ const App: React.FC = () => {
         suppliers={suppliers} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier}
         salesHistory={salesHistory} shiftHistory={shiftHistory}
         users={users} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser}
-        financials={financials} stockLevels={stockLevels} stockMovements={stockMovements}
+        financials={financials} onUpdateTransactionStatus={handleUpdateTransactionStatus}
+        stockLevels={stockLevels} stockMovements={stockMovements}
         purchaseOrders={purchaseOrders} onAddPurchaseOrder={handleAddPurchaseOrder} onUpdatePurchaseOrderStatus={handleUpdatePurchaseOrderStatus}
         onRefreshInventory={refreshInventoryData} onNFeImport={handleNFeImport}
-        onBackToPDV={() => setCurrentView('pdv')} 
+        onBackToPDV={() => setCurrentView('pdv')}
+        onLogout={handleLogout}
       />
     );
   }
@@ -535,6 +580,7 @@ const App: React.FC = () => {
         onSuprimento={() => openMovementModal('Suprimento')}
         onSangria={() => openMovementModal('Sangria')}
         currentUser={currentUser}
+        onLogout={handleLogout}
       />
       <main className="flex flex-1 overflow-hidden relative">
         {isPdvLocked && (
