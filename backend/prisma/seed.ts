@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+// FIX: Use a named import for PrismaClient and instantiate it directly.
 const prisma = new PrismaClient();
 
 async function main() {
@@ -59,9 +60,8 @@ async function main() {
 main()
   .catch((e) => {
     console.error(e);
-    // FIX: By re-throwing the error, the process will exit with a non-zero status code,
-    // and the `finally` block will still execute to disconnect Prisma.
-    // Using process.exit() could prevent the finally block from running.
+    // FIX: Re-throw the error to ensure the .finally() block is executed,
+    // allowing Prisma to disconnect gracefully.
     throw e;
   })
   .finally(async () => {

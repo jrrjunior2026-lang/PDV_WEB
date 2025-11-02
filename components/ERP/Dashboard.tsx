@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo } from 'react';
 // FIX: Add missing InventoryReport type to the import.
 import type { Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Permission, PurchaseOrder, InventoryCountItem, InventoryReport } from '../../types';

@@ -1,8 +1,9 @@
 
 
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-// FIX: Add missing InventoryReport type to the import.
-import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder, InventoryCountItem, InventoryReport } from './types';
+// FIX: Add missing ShiftMovement type.
+import type { CartItem, Product, SaleRecord, User, AccountTransaction, StockLevel, StockMovement, Customer, Supplier, NFeImportResult, CashShift, Payment, PurchaseOrder, InventoryCountItem, InventoryReport, ShiftMovement } from './types';
 import PDVHeader from './components/PDVHeader';
 import ProductGrid from './components/ProductGrid';
 import CartDisplay from './components/CartDisplay';
@@ -20,10 +21,29 @@ import VoiceCommandControl, { VoiceStatus } from './components/VoiceCommandContr
 import Login from './components/Login';
 
 import * as geminiService from './services/geminiService';
-import * as tokenService from './services/tokenService';
-import apiClient from './services/apiClient';
 import { hasPermission } from './services/authService';
+import { v4 as uuidv4 } from 'uuid';
 
+// --- MOCK DATA ---
+const mockUsers: User[] = [
+    { id: 'user-1', name: 'Admin User', email: 'admin@pdv.com', role: 'Admin', status: 'Active' },
+    { id: 'user-2', name: 'Gerente User', email: 'gerente@pdv.com', role: 'Gerente', status: 'Active' },
+    { id: 'user-3', name: 'Caixa User', email: 'caixa@pdv.com', role: 'Caixa', status: 'Active' },
+];
+
+const mockProducts: Product[] = [
+  { id: 'prod-1', code: 'p-001', ean: '7890000000017', name: 'Café Espresso', price: 5.00, imageUrl: 'https://images.unsplash.com/photo-1579992305312-04bde435d88f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&q=80', category: 'Bebidas', fiscalData: { ncm: '0901.21.00', cfop: '5102' } },
+  { id: 'prod-2', code: 'p-002', ean: '7890000000024', name: 'Cappuccino Italiano', price: 8.50, imageUrl: 'https://images.unsplash.com/photo-1557006029-765c9d1b3341?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&q=80', category: 'Bebidas', fiscalData: { ncm: '0901.21.00', cfop: '5102' } },
+  { id: 'prod-3', code: 'p-003', ean: '7890000000031', name: 'Pão de Queijo', price: 4.00, imageUrl: 'https://images.unsplash.com/photo-1633534509434-323a13295987?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&q=80', category: 'Salgados', fiscalData: { ncm: '1905.90.90', cfop: '5102' } },
+  { id: 'prod-4', code: 'p-004', ean: '7890000000048', name: 'Croissant de Chocolate', price: 9.00, imageUrl: 'https://images.unsplash.com/photo-1622327594914-1e5cb20881b5?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&q=80', category: 'Doces', fiscalData: { ncm: '1905.31.00', cfop: '5102' } },
+  { id: 'prod-5', code: 'p-005', ean: '7890000000055', name: 'Água Mineral', price: 3.00, imageUrl: 'https://images.unsplash.com/photo-1582294120348-e414b423198b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=300&q=80', category: 'Bebidas', fiscalData: { ncm: '2201.10.00', cfop: '5405' } },
+];
+
+const mockCustomers: Customer[] = [
+    { id: 'cust-1', name: 'Consumidor Final', email: '', phone: '', cpf: '000.000.000-00', loyaltyPoints: 0, createdAt: new Date().toISOString(), creditLimit: 0, currentBalance: 0 },
+    { id: 'cust-2', name: 'Maria Silva', email: 'maria@example.com', phone: '(11) 98765-4321', cpf: '123.456.789-10', loyaltyPoints: 150, createdAt: new Date().toISOString(), creditLimit: 500, currentBalance: 75.50 },
+];
+// --- END MOCK DATA ---
 
 type AppView = 'pdv' | 'erp';
 type ShiftModal = 'close' | 'movement' | null;
@@ -33,7 +53,6 @@ const App: React.FC = () => {
   // Global State
   const [currentView, setCurrentView] = useState<AppView>('pdv');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoadingData, setIsLoadingData] = useState(false);
   
   // ERP Data State
   const [products, setProducts] = useState<Product[]>([]);
@@ -71,154 +90,60 @@ const App: React.FC = () => {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
-  // Offline/Sync State - This will be simplified as we assume online-first now
-  const [isOnline, setIsOnline] = useState(true); // Default to online
+  // Offline/Sync State
+  const [isOnline, setIsOnline] = useState(true); 
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Homologation Panel State
   const [isHomologationPanelOpen, setHomologationPanelOpen] = useState(false);
   
-  // --- DATA REFRESH LOGIC ---
-  const refreshInventoryData = useCallback(async () => {
-    try {
-      const [levels, movements] = await Promise.all([
-          apiClient.get<StockLevel[]>('/inventory/levels'),
-          apiClient.get<StockMovement[]>('/inventory/movements')
-      ]);
-      setStockLevels(levels);
-      setStockMovements(movements);
-    } catch (error) {
-        console.error("Failed to refresh inventory data", error);
-    }
-  }, []);
-
-  const refreshProducts = useCallback(async () => {
-    try {
-        const prods = await apiClient.get<Product[]>('/products');
-        setProducts(prods);
-    } catch (error) {
-        console.error("Failed to refresh products", error);
-    }
-  }, []);
-
-  const refreshCustomers = useCallback(async () => {
-    try {
-        const custs = await apiClient.get<Customer[]>('/customers');
-        setCustomers(custs);
-    } catch (error) {
-        console.error("Failed to refresh customers", error);
-    }
-  }, []);
-
-  const refreshSuppliers = useCallback(async () => {
-    try {
-        const supps = await apiClient.get<Supplier[]>('/suppliers');
-        setSuppliers(supps);
-    } catch(error) {
-        console.error("Failed to refresh suppliers", error);
-    }
-  }, []);
-  
-  const refreshUsers = useCallback(async () => {
-    try {
-        const userList = await apiClient.get<User[]>('/users');
-        setUsers(userList);
-    } catch(error) {
-        console.error("Failed to refresh users", error);
-    }
-  }, []);
-
-  const refreshFinancials = useCallback(async () => {
-    try {
-        const financialData = await apiClient.get<AccountTransaction[]>('/financials');
-        setFinancials(financialData);
-    } catch(error) {
-        console.error("Failed to refresh financials", error);
-    }
-  }, []);
-
-  const refreshShiftHistory = useCallback(async () => {
-    try {
-      const history = await apiClient.get<CashShift[]>('/shifts/history');
-      setShiftHistory(history);
-    } catch (error) {
-      console.error("Failed to refresh shift history", error);
-    }
-  }, []);
-  
-  const refreshPurchaseOrders = useCallback(async () => {
-    try {
-        const orders = await apiClient.get<PurchaseOrder[]>('/purchasing/orders');
-        setPurchaseOrders(orders);
-    } catch (error) {
-        console.error("Failed to refresh purchase orders", error);
-    }
-  }, []);
-
-
   // --- AUTH & DATA LOADING ---
-  const handleLogin = useCallback(async (user: User) => {
-    setIsLoadingData(true);
+  const handleLogin = useCallback((user: User) => {
     setCurrentUser(user);
+    // Load mock data
+    setProducts(mockProducts);
+    setCustomers(mockCustomers);
+    setUsers(mockUsers);
+    setStockLevels(mockProducts.map(p => ({ productId: p.id, productName: p.name, quantity: 50 }))); // Start with 50 of each
+    setFinancials([
+        { id: uuidv4(), description: `Venda #123`, amount: 75.50, dueDate: new Date().toISOString(), status: 'Pendente', type: 'receivable', customerId: 'cust-2'},
+    ]);
 
     if (user.role === 'Caixa') {
         setCurrentView('pdv');
+        setShiftOpenModalVisible(true);
     } else {
         setCurrentView('erp');
-    }
-    
-    try {
-        const [ prods, custs, supps, history, userList, financialData, sLevels, sMovements, shifts, pOrders, activeShift, analytics ] = await Promise.all([
-            apiClient.get<Product[]>('/products'), 
-            apiClient.get<Customer[]>('/customers'), 
-            apiClient.get<Supplier[]>('/suppliers'),
-            apiClient.get<SaleRecord[]>('/sales/history'), 
-            apiClient.get<User[]>('/users'),
-            apiClient.get<AccountTransaction[]>('/financials'), 
-            apiClient.get<StockLevel[]>('/inventory/levels'), 
-            apiClient.get<StockMovement[]>('/inventory/movements'),
-            apiClient.get<CashShift[]>('/shifts/history'), 
-            apiClient.get<PurchaseOrder[]>('/purchasing/orders'),
-            apiClient.get<CashShift | null>('/shifts/current'),
-            apiClient.get<any>('/analytics/dashboard') // Fetch analytics data
-        ]);
-
-        setProducts(prods); setCustomers(custs); setSuppliers(supps);
-        setSalesHistory(history); setUsers(userList); setFinancials(financialData); 
-        setStockLevels(sLevels); setStockMovements(sMovements); setShiftHistory(shifts); 
-        setPurchaseOrders(pOrders); setAnalyticsData(analytics);
-        
-        setCurrentShift(activeShift);
-        if (!activeShift && user.role === 'Caixa') {
-            setShiftOpenModalVisible(true);
-        }
-    } catch (error) {
-        console.error("Failed to load initial data", error);
-        // Handle logout or show error message
-    } finally {
-        setIsLoadingData(false);
+        // Mock analytics data for ERP dashboard
+        setAnalyticsData({
+            kpis: {
+                totalSalesToday: { value: 1250.75, trend: 15.2 },
+                ticketMedio: { value: 45.20, trend: -2.1 },
+                newCustomersToday: { value: 3, trend: 50 },
+                itemsSoldToday: { value: 150, trend: 12 },
+                totalPayablePending: 0,
+                totalReceivablePending: 75.50
+            },
+            charts: {
+                salesTrend: [ {date: 'D-6', total: 800}, {date: 'D-5', total: 950}, {date: 'D-4', total: 900}, {date: 'D-3', total: 1100}, {date: 'D-2', total: 1050}, {date: 'D-1', total: 1300}, {date: 'Hoje', total: 1250.75} ],
+                paymentMethods: [ {name: 'Dinheiro', value: 500}, {name: 'PIX', value: 450.75}, {name: 'Credito', value: 300}]
+            },
+            lists: {
+                topProducts: mockProducts.slice(0, 5).map(p => ({name: p.name, total: Math.random() * 500})),
+                topCustomers: mockCustomers.slice(1, 2).map(c => ({name: c.name, total: c.currentBalance}))
+            }
+        });
     }
   }, []);
 
   const handleLogout = useCallback(() => {
-    tokenService.removeToken();
     setCurrentUser(null);
-    setProducts([]);
-    setCustomers([]);
-    setSuppliers([]);
-    setSalesHistory([]);
-    setUsers([]);
-    setFinancials([]);
-    setStockLevels([]);
-    setStockMovements([]);
-    setShiftHistory([]);
-    setPurchaseOrders([]);
-    setAnalyticsData(null);
-    setCart([]);
-    setCurrentShift(null);
-    setPaymentModalOpen(false);
-    setSearchTerm('');
-    setSelectedCustomer(null);
+    // Clear all state
+    setProducts([]); setCustomers([]); setSuppliers([]); setSalesHistory([]);
+    setUsers([]); setFinancials([]); setStockLevels([]); setStockMovements([]);
+    setShiftHistory([]); setPurchaseOrders([]); setAnalyticsData(null);
+    setCart([]); setCurrentShift(null); setPaymentModalOpen(false);
+    setSearchTerm(''); setSelectedCustomer(null);
   }, []);
 
   // --- PDV CART & DISCOUNT LOGIC ---
@@ -259,16 +184,9 @@ const App: React.FC = () => {
 
   const handleApplyDiscount = useCallback((amount: number, type: 'fixed' | 'percentage') => {
       if (!discountTarget) return;
-
       const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
       if (discountTarget.type === 'item') {
-          setCart(prevCart => prevCart.map(item => {
-              if (item.id === discountTarget.itemId) {
-                  return { ...item, discount: { amount, type } };
-              }
-              return item;
-          }));
+          setCart(prevCart => prevCart.map(item => item.id === discountTarget.itemId ? { ...item, discount: { amount, type } } : item));
       } else { // 'total'
           if (subtotal === 0) return;
           const totalDiscountValue = type === 'fixed' ? amount : subtotal * (amount / 100);
@@ -278,8 +196,7 @@ const App: React.FC = () => {
               return { ...item, discount: { amount: proportionalDiscount, type: 'fixed' } };
           }));
       }
-      setDiscountModalOpen(false);
-      setDiscountTarget(null);
+      setDiscountModalOpen(false); setDiscountTarget(null);
   }, [cart, discountTarget]);
 
   const handleApplyLoyaltyPoints = useCallback((pointsToRedeem: number, discountAmount: number) => {
@@ -292,11 +209,8 @@ const App: React.FC = () => {
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const promotionalDiscount = cart.reduce((sum, item) => {
       if (!item.discount) return sum;
-      if (item.discount.type === 'fixed') {
-        return sum + item.discount.amount;
-      }
-      const itemTotal = item.price * item.quantity;
-      return sum + (itemTotal * (item.discount.amount / 100));
+      if (item.discount.type === 'fixed') return sum + item.discount.amount;
+      return sum + (item.price * item.quantity * (item.discount.amount / 100));
     }, 0);
     const loyaltyDiscountAmount = loyaltyDiscount.amount;
     const totalValue = subtotal - promotionalDiscount - loyaltyDiscountAmount;
@@ -310,82 +224,108 @@ const App: React.FC = () => {
   };
 
   const handleFinalizeSale = useCallback(async (payments: Payment[], changeGiven: number) => {
-    try {
-        const totalDiscountValue = promotionalDiscount + loyaltyDiscountAmount;
-        let pointsEarned = 0;
-        if (selectedCustomer) {
-            pointsEarned = Math.floor(total / 10); // Example: 1 point per R$10
-        }
+    const saleRecord: SaleRecord = {
+        id: uuidv4(),
+        timestamp: new Date().toISOString(),
+        items: cart,
+        total,
+        payments,
+        changeGiven,
+        nfceXml: '<nfce>simulada</nfce>',
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.name,
+        totalDiscount: promotionalDiscount + loyaltyDiscountAmount,
+        loyaltyPointsEarned: selectedCustomer ? Math.floor(total / 10) : 0,
+        loyaltyPointsRedeemed: loyaltyDiscount.points,
+        loyaltyDiscountAmount: loyaltyDiscount.amount,
+    };
+    setSalesHistory(prev => [...prev, saleRecord]);
+    
+    // Update stock levels and movements
+    const newMovements: StockMovement[] = cart.map(item => ({
+        id: uuidv4(), timestamp: saleRecord.timestamp, productId: item.id, productName: item.name,
+        type: 'Venda', quantityChange: -item.quantity, reason: `Venda #${saleRecord.id.substring(0, 5)}`,
+    }));
+    setStockMovements(prev => [...prev, ...newMovements]);
+    setStockLevels(prevLevels => {
+        const newLevels = [...prevLevels];
+        cart.forEach(item => {
+            const index = newLevels.findIndex(sl => sl.productId === item.id);
+            if (index > -1) newLevels[index].quantity -= item.quantity;
+        });
+        return newLevels;
+    });
 
-        const salePayload = {
-            items: cart, total, payments, changeGiven,
-            customerId: selectedCustomer?.id,
-            totalDiscount: totalDiscountValue, 
-            loyaltyPointsEarned: pointsEarned,
-            loyaltyPointsRedeemed: loyaltyDiscount.points, 
-            loyaltyDiscountAmount: loyaltyDiscount.amount,
-        };
-
-        const { saleRecord, updatedShift } = await apiClient.post<{ saleRecord: SaleRecord, updatedShift: CashShift }>('/sales', salePayload);
-
-        setCurrentShift(updatedShift);
-        setSalesHistory(prev => [...prev, saleRecord]);
-        
-        await refreshInventoryData();
-        if (selectedCustomer) {
-            await refreshCustomers(); // Refresh to get updated points/balance
-        }
-        if (payments.some(p => p.method === 'Fiado')) {
-            await refreshFinancials(); // Refresh to see new receivable
-        }
-        
-        handleClearCart();
-        setPaymentModalOpen(false);
-
-    } catch (error) {
-        console.error("Failed to finalize sale:", error);
-        const errorMessage = (error as any)?.response?.data?.message || (error as Error).message;
-        alert(`Erro ao finalizar a venda: ${errorMessage}`);
+    // Update customer points/balance
+    if (selectedCustomer) {
+        setCustomers(prev => prev.map(c => {
+            if (c.id === selectedCustomer.id) {
+                const newBalance = payments.some(p => p.method === 'Fiado') ? c.currentBalance + total : c.currentBalance;
+                const newPoints = c.loyaltyPoints - loyaltyDiscount.points + saleRecord.loyaltyPointsEarned;
+                return { ...c, loyaltyPoints: newPoints, currentBalance: newBalance };
+            }
+            return c;
+        }));
     }
-  }, [cart, total, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, handleClearCart, refreshInventoryData, selectedCustomer, refreshCustomers, refreshFinancials]);
+
+    // Update financials if 'Fiado'
+    if (payments.some(p => p.method === 'Fiado')) {
+        setFinancials(prev => [...prev, { id: uuidv4(), description: `Venda para ${selectedCustomer?.name}`, amount: total, dueDate: new Date().toISOString(), status: 'Pendente', type: 'receivable', customerId: selectedCustomer?.id }]);
+    }
+    
+    // Update shift data
+    setCurrentShift(prev => {
+        if (!prev) return null;
+        const paymentTotals = { ...prev.paymentTotals };
+        payments.forEach(p => {
+            paymentTotals[p.method] = (paymentTotals[p.method] || 0) + p.amount;
+        });
+        return { ...prev, totalSales: prev.totalSales + total, sales: [...prev.sales, saleRecord], paymentTotals };
+    });
+    
+    handleClearCart();
+    setPaymentModalOpen(false);
+  }, [cart, total, promotionalDiscount, loyaltyDiscountAmount, loyaltyDiscount, handleClearCart, selectedCustomer]);
 
   // --- SHIFT LOGIC ---
   const handleOpenShift = useCallback(async (openingBalance: number) => {
     if (!currentUser) return;
-    try {
-        const newShift = await apiClient.post<CashShift>('/shifts/open', { openingBalance, userId: currentUser.id, userName: currentUser.name });
-        setCurrentShift(newShift); 
-        setShiftOpenModalVisible(false);
-    } catch (error) {
-        console.error("Failed to open shift", error);
-        alert("Não foi possível abrir o caixa.");
-    }
+    const newShift: CashShift = {
+        id: uuidv4(), status: 'Aberto', userId: currentUser.id, userName: currentUser.name, openedAt: new Date().toISOString(),
+        closedAt: null, openingBalance, closingBalance: null, expectedBalance: null, balanceDifference: null,
+        totalSales: 0, totalSuprimentos: openingBalance, totalSangrias: 0,
+        paymentTotals: { Dinheiro: 0, PIX: 0, Credito: 0, Debito: 0, Fiado: 0 },
+        movements: [{ id: uuidv4(), timestamp: new Date().toISOString(), type: 'Suprimento', amount: openingBalance, reason: 'Abertura de Caixa', userId: currentUser.id }],
+        sales: []
+    };
+    setCurrentShift(newShift); 
+    setShiftOpenModalVisible(false);
   }, [currentUser]);
 
   const handleCloseShift = useCallback(async (closingBalance: number) => {
       if (!currentShift) return;
-      try {
-        await apiClient.post('/shifts/close', { closingBalance });
-        setCurrentShift(null); 
-        await refreshShiftHistory();
-        setActiveShiftModal(null); 
-        setShiftOpenModalVisible(true);
-      } catch (error) {
-        console.error("Failed to close shift", error);
-        alert("Não foi possível fechar o caixa.");
-      }
-  }, [currentShift, refreshShiftHistory]);
+      const totalSalesCash = currentShift.paymentTotals.Dinheiro || 0;
+      const expectedCash = currentShift.openingBalance + totalSalesCash + currentShift.movements.filter(m => m.type === 'Suprimento' && m.reason !== 'Abertura de Caixa').reduce((sum, m) => sum + m.amount, 0) - currentShift.totalSangrias;
+      const closedShift: CashShift = { ...currentShift, status: 'Fechado', closedAt: new Date().toISOString(), closingBalance, expectedBalance: expectedCash, balanceDifference: closingBalance - expectedCash };
+      setShiftHistory(prev => [...prev, closedShift]);
+      setCurrentShift(null); 
+      setActiveShiftModal(null); 
+      setShiftOpenModalVisible(true);
+  }, [currentShift]);
 
   const handleRecordShiftMovement = useCallback(async (amount: number, reason: string) => {
       if (!currentShift || !currentUser) return;
-      try {
-        const updatedShift = await apiClient.post<CashShift>('/shifts/movement', { type: movementType, amount, reason, userId: currentUser.id });
-        setCurrentShift(updatedShift); 
-        setActiveShiftModal(null);
-      } catch (error) {
-        console.error("Failed to record movement", error);
-        alert("Não foi possível registrar a movimentação.");
-      }
+      const newMovement: ShiftMovement = { id: uuidv4(), timestamp: new Date().toISOString(), type: movementType, amount, reason, userId: currentUser.id };
+      setCurrentShift(prev => {
+          if (!prev) return null;
+          return {
+              ...prev,
+              movements: [...prev.movements, newMovement],
+              totalSuprimentos: prev.totalSuprimentos + (movementType === 'Suprimento' ? amount : 0),
+              totalSangrias: prev.totalSangrias + (movementType === 'Sangria' ? amount : 0)
+          };
+      });
+      setActiveShiftModal(null);
   }, [currentShift, movementType, currentUser]);
 
   const openMovementModal = (type: 'Suprimento' | 'Sangria') => {
@@ -395,20 +335,12 @@ const App: React.FC = () => {
   // --- VOICE COMMAND LOGIC ---
   const handleVoiceCommand = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setVoiceError("Reconhecimento de voz não é suportado neste navegador.");
-      setVoiceStatus('error');
-      return;
-    }
+    if (!SpeechRecognition) { setVoiceError("Reconhecimento de voz não é suportado."); setVoiceStatus('error'); return; }
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
     recognition.onstart = () => setVoiceStatus('listening');
     recognition.onend = () => { if (voiceStatus !== 'processing') setVoiceStatus('idle'); };
     recognition.onerror = (event: any) => { setVoiceError(event.error); setVoiceStatus('error'); };
-
     recognition.onresult = async (event: any) => {
       const command = event.results[0][0].transcript;
       setVoiceStatus('processing');
@@ -435,10 +367,9 @@ const App: React.FC = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const isAnyModalOpen = isPaymentModalOpen || isHomologationPanelOpen || !!activeShiftModal || isShiftOpenModalVisible || isCustomerSearchModalOpen || isDiscountModalOpen || isLoyaltyModalOpen;
       if (currentView !== 'pdv' || isAnyModalOpen) return;
-
-      if (event.key === 'F1') { event.preventDefault(); document.getElementById('product-search-input')?.focus();
-      } else if (event.key === 'F2') { event.preventDefault(); if (cart.length > 0) handleOpenPaymentModal();
-      } else if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) { event.preventDefault(); if (cart.length > 0) handleClearCart(); }
+      if (event.key === 'F1') { event.preventDefault(); document.getElementById('product-search-input')?.focus(); } 
+      else if (event.key === 'F2') { event.preventDefault(); if (cart.length > 0) handleOpenPaymentModal(); } 
+      else if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) { event.preventDefault(); if (cart.length > 0) handleClearCart(); }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => { document.removeEventListener('keydown', handleKeyDown); };
@@ -446,92 +377,110 @@ const App: React.FC = () => {
   
   // --- ERP CRUD HANDLERS ---
   const handleAddProduct = useCallback(async (productData: Omit<Product, 'id'>) => {
-    await apiClient.post('/products', productData); await refreshProducts(); await refreshInventoryData();
-  }, [refreshProducts, refreshInventoryData]);
+      const newProduct = { ...productData, id: uuidv4() };
+      setProducts(prev => [...prev, newProduct]);
+      setStockLevels(prev => [...prev, { productId: newProduct.id, productName: newProduct.name, quantity: 0 }]);
+  }, []);
 
   const handleUpdateProduct = useCallback(async (productData: Product) => {
-    await apiClient.put(`/products/${productData.id}`, productData); await refreshProducts();
-  }, [refreshProducts]);
+    setProducts(prev => prev.map(p => p.id === productData.id ? productData : p));
+  }, []);
 
   const handleDeleteProduct = useCallback(async (productId: string) => {
-    await apiClient.delete(`/products/${productId}`); await refreshProducts(); await refreshInventoryData();
-  }, [refreshProducts, refreshInventoryData]);
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    setStockLevels(prev => prev.filter(s => s.productId !== productId));
+  }, []);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'loyaltyPoints' | 'createdAt' | 'creditLimit' | 'currentBalance'>) => {
-    await apiClient.post('/customers', customerData); await refreshCustomers();
-  }, [refreshCustomers]);
+      setCustomers(prev => [...prev, { ...customerData, id: uuidv4(), loyaltyPoints: 0, createdAt: new Date().toISOString(), creditLimit: 0, currentBalance: 0 }]);
+  }, []);
 
   const handleUpdateCustomer = useCallback(async (customerData: Customer) => {
-    await apiClient.put(`/customers/${customerData.id}`, customerData); await refreshCustomers();
-  }, [refreshCustomers]);
+    setCustomers(prev => prev.map(c => c.id === customerData.id ? customerData : c));
+  }, []);
 
   const handleDeleteCustomer = useCallback(async (customerId: string) => {
-    await apiClient.delete(`/customers/${customerId}`); await refreshCustomers();
-  }, [refreshCustomers]);
+    setCustomers(prev => prev.filter(c => c.id !== customerId));
+  }, []);
 
   const handleSettleCustomerDebt = useCallback(async (customerId: string) => {
-    await apiClient.post(`/financials/settle-debt/${customerId}`);
-    await refreshFinancials();
-    await refreshCustomers();
-  }, [refreshFinancials, refreshCustomers]);
+      setFinancials(prev => prev.map(t => (t.customerId === customerId && t.type === 'receivable') ? { ...t, status: 'Pago' } : t));
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, currentBalance: 0 } : c));
+  }, []);
 
   const handleAddSupplier = useCallback(async (supplierData: Omit<Supplier, 'id'>) => {
-    await apiClient.post('/suppliers', supplierData); await refreshSuppliers();
-  }, [refreshSuppliers]);
+    setSuppliers(prev => [...prev, { ...supplierData, id: uuidv4() }]);
+  }, []);
   
   const handleUpdateSupplier = useCallback(async (supplierData: Supplier) => {
-    await apiClient.put(`/suppliers/${supplierData.id}`, supplierData); await refreshSuppliers();
-  }, [refreshSuppliers]);
+    setSuppliers(prev => prev.map(s => s.id === supplierData.id ? supplierData : s));
+  }, []);
 
   const handleDeleteSupplier = useCallback(async (supplierId: string) => {
-    await apiClient.delete(`/suppliers/${supplierId}`); await refreshSuppliers();
-  }, [refreshSuppliers]);
+    setSuppliers(prev => prev.filter(s => s.id !== supplierId));
+  }, []);
 
   const handleAddUser = useCallback(async (userData: Omit<User, 'id'>) => {
-    await apiClient.post('/users', userData); await refreshUsers();
-  }, [refreshUsers]);
+    setUsers(prev => [...prev, { ...userData, id: uuidv4() }]);
+  }, []);
   
   const handleUpdateUser = useCallback(async (userData: User) => {
-    await apiClient.put(`/users/${userData.id}`, userData); await refreshUsers();
-  }, [refreshUsers]);
+    setUsers(prev => prev.map(u => u.id === userData.id ? userData : u));
+  }, []);
 
   const handleDeleteUser = useCallback(async (userId: string) => {
-    await apiClient.delete(`/users/${userId}`); await refreshUsers();
-  }, [refreshUsers]);
+    setUsers(prev => prev.filter(u => u.id !== userId));
+  }, []);
   
   const handleAddPurchaseOrder = useCallback(async (orderData: Omit<PurchaseOrder, 'id' | 'status' | 'createdAt'>) => {
-    await apiClient.post('/purchasing/orders', orderData);
-    await refreshPurchaseOrders();
-  }, [refreshPurchaseOrders]);
+      const newOrder = { ...orderData, id: uuidv4(), status: 'Pendente' as const, createdAt: new Date().toISOString() };
+      setPurchaseOrders(prev => [...prev, newOrder]);
+  }, []);
   
   const handleUpdatePurchaseOrderStatus = useCallback(async (orderId: string, status: 'Recebido' | 'Cancelado') => {
-    await apiClient.patch(`/purchasing/orders/${orderId}/status`, { status });
-    await refreshPurchaseOrders();
-    if (status === 'Recebido') {
-        await refreshInventoryData();
-    }
-  }, [refreshPurchaseOrders, refreshInventoryData]);
+      setPurchaseOrders(prev => prev.map(o => o.id === orderId ? { ...o, status, receivedAt: new Date().toISOString() } : o));
+      if (status === 'Recebido') {
+          const order = purchaseOrders.find(o => o.id === orderId);
+          if (order) {
+              setStockLevels(prevLevels => {
+                  const newLevels = [...prevLevels];
+                  order.items.forEach(item => {
+                      const index = newLevels.findIndex(sl => sl.productId === item.productId);
+                      if (index > -1) newLevels[index].quantity += item.quantity;
+                  });
+                  return newLevels;
+              });
+          }
+      }
+  }, [purchaseOrders]);
 
   const handleUpdateTransactionStatus = useCallback(async (transactionId: string) => {
-    await apiClient.patch(`/financials/transactions/${transactionId}/status`, { status: 'Pago' });
-    await refreshFinancials();
-  }, [refreshFinancials]);
+    setFinancials(prev => prev.map(t => t.id === transactionId ? { ...t, status: 'Pago' } : t));
+  }, []);
 
   const handleProcessInventoryCount = useCallback(async (items: InventoryCountItem[]): Promise<InventoryReport> => {
-    const report = await apiClient.post<InventoryReport>('/inventory/count', { counts: items });
-    await refreshInventoryData();
-    return report;
-  }, [refreshInventoryData]);
+      const discrepancies = items.map(item => {
+          const stockLevel = stockLevels.find(sl => sl.productId === item.productId);
+          const expected = stockLevel?.quantity || 0;
+          // FIX: The returned object must match the InventoryReport discrepancy type, specifically mapping countedQuantity to 'counted'.
+          return {
+            productId: item.productId,
+            productName: stockLevel?.productName || '',
+            expected,
+            counted: item.countedQuantity,
+            difference: item.countedQuantity - expected,
+          };
+      }).filter(d => d.difference !== 0);
+      return { discrepancies, timestamp: new Date().toISOString() };
+  }, [stockLevels]);
 
   const handleNFeImport = useCallback(async (file: File): Promise<NFeImportResult> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    // FIX: The `isFormData` argument was missing in the `apiClient.post` call,
-    // which is required for file uploads to be processed correctly by the backend.
-    const result = await apiClient.post<NFeImportResult>('/inventory/import-nfe', formData, true);
-    await Promise.all([ refreshProducts(), refreshSuppliers(), refreshInventoryData() ]);
-    return result;
-  }, [refreshProducts, refreshSuppliers, refreshInventoryData]);
+    console.log("Mocking NFe import for file:", file.name);
+    return {
+        summary: { invoiceNumber: '12345', supplierFound: true, supplierCreated: false, productsProcessed: 1, newProductsCreated: 0, stockEntries: 1 },
+        details: { supplierName: 'Fornecedor Mock', products: [{ code: 'p-001', name: 'Café Espresso', quantity: 10, isNew: false }] }
+    };
+  }, []);
 
 
   // --- RENDER LOGIC ---
@@ -539,23 +488,12 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} />;
   }
 
-  if (isLoadingData) {
-    return (
-        <div className="flex h-screen w-full flex-col items-center justify-center bg-brand-primary text-white">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-accent mb-4"></div>
-            <p>Carregando dados...</p>
-            <p className="text-sm text-brand-subtle">Bem-vindo(a), {currentUser.name}!</p>
-        </div>
-    );
-  }
-
   const filteredProducts = products.filter(product => product.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (currentView === 'erp' && hasPermission(currentUser.role, 'view_dashboard')) {
     return (
       <ERPDashboard
-        currentUser={currentUser} 
-        analyticsData={analyticsData}
+        currentUser={currentUser} analyticsData={analyticsData}
         products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct}
         customers={customers} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} onSettleCustomerDebt={handleSettleCustomerDebt}
         suppliers={suppliers} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier}
@@ -577,7 +515,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen font-sans bg-brand-primary text-brand-text">
       <PDVHeader
         isOnline={isOnline} onToggleOnline={() => setIsOnline(prev => !prev)}
-        pendingSalesCount={0} isSyncing={isSyncing} // Offline sync logic removed for now
+        pendingSalesCount={0} isSyncing={isSyncing}
         onOpenHomologationPanel={() => setHomologationPanelOpen(true)}
         onOpenERP={() => setCurrentView('erp')}
         shiftStatus={currentShift?.status || 'Fechado'}
@@ -601,15 +539,9 @@ const App: React.FC = () => {
                 <div className="relative flex-grow">
                     <label htmlFor="product-search-input" className="sr-only">Buscar Produto (F1)</label>
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-brand-subtle" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                        </svg>
+                        <svg className="h-5 w-5 text-brand-subtle" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
                     </div>
-                    <input
-                        id="product-search-input" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Buscar produto... (F1)"
-                        className="w-full bg-brand-secondary border border-brand-border rounded-md p-2 pl-10 text-brand-text placeholder-brand-subtle focus:ring-1 focus:ring-brand-accent focus:border-brand-accent"
-                    />
+                    <input id="product-search-input" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar produto... (F1)" className="w-full bg-brand-secondary border border-brand-border rounded-md p-2 pl-10 text-brand-text placeholder-brand-subtle focus:ring-1 focus:ring-brand-accent focus:border-brand-accent"/>
                 </div>
                 <VoiceCommandControl status={voiceStatus} onClick={handleVoiceCommand} />
             </div>
@@ -618,71 +550,18 @@ const App: React.FC = () => {
             </div>
         </div>
         <aside className={`w-1/3 bg-brand-secondary border-l border-brand-border flex flex-col ${isPdvLocked ? 'pointer-events-none blur-sm' : ''}`}>
-          <CartDisplay
-            items={cart}
-            subtotal={subtotal}
-            promotionalDiscount={promotionalDiscount}
-            loyaltyDiscount={loyaltyDiscountAmount}
-            total={total}
-            selectedCustomer={selectedCustomer}
-            onUpdateQuantity={handleUpdateQuantity}
-            onClearCart={handleClearCart}
-            onPay={handleOpenPaymentModal}
-            onSelectCustomer={() => setCustomerSearchModalOpen(true)}
-            onApplyDiscount={handleOpenDiscountModal}
-            onRedeemPoints={() => setLoyaltyModalOpen(true)}
-          />
+          <CartDisplay items={cart} subtotal={subtotal} promotionalDiscount={promotionalDiscount} loyaltyDiscount={loyaltyDiscountAmount} total={total} selectedCustomer={selectedCustomer} onUpdateQuantity={handleUpdateQuantity} onClearCart={handleClearCart} onPay={handleOpenPaymentModal} onSelectCustomer={() => setCustomerSearchModalOpen(true)} onApplyDiscount={handleOpenDiscountModal} onRedeemPoints={() => setLoyaltyModalOpen(true)} />
         </aside>
       </main>
       
       {isShiftOpenModalVisible && <OpenShiftModal onOpen={handleOpenShift} />}
-
-      {activeShiftModal === 'close' && currentShift && (
-          <CloseShiftModal shift={currentShift} onClose={() => setActiveShiftModal(null)} onSubmit={handleCloseShift} />
-      )}
-
-      {activeShiftModal === 'movement' && currentShift && (
-          <ShiftMovementModal type={movementType} onClose={() => setActiveShiftModal(null)} onSubmit={handleRecordShiftMovement} />
-      )}
-
-      {isCustomerSearchModalOpen && (
-          <CustomerSearchModal
-              customers={customers}
-              onClose={() => setCustomerSearchModalOpen(false)}
-              onSelect={(customer) => {
-                  setSelectedCustomer(customer);
-                  setCustomerSearchModalOpen(false);
-              }}
-          />
-      )}
-      
-      {isDiscountModalOpen && discountTarget && (
-          <DiscountModal
-              target={discountTarget}
-              onClose={() => setDiscountModalOpen(false)}
-              onSubmit={handleApplyDiscount}
-          />
-      )}
-
-      {isLoyaltyModalOpen && selectedCustomer && (
-          <LoyaltyRedemptionModal
-              customer={selectedCustomer}
-              cartTotal={total + loyaltyDiscountAmount} // Pass total before loyalty discount
-              onClose={() => setLoyaltyModalOpen(false)}
-              onSubmit={handleApplyLoyaltyPoints}
-          />
-      )}
-
-      {isPaymentModalOpen && (
-        <PaymentModal 
-          total={total} 
-          onFinalize={handleFinalizeSale} 
-          onCancel={() => setPaymentModalOpen(false)}
-          selectedCustomer={selectedCustomer}
-        />
-      )}
-
-       {isHomologationPanelOpen && <HomologationPanel onClose={() => setHomologationPanelOpen(false)} />}
+      {activeShiftModal === 'close' && currentShift && <CloseShiftModal shift={currentShift} onClose={() => setActiveShiftModal(null)} onSubmit={handleCloseShift} />}
+      {activeShiftModal === 'movement' && currentShift && <ShiftMovementModal type={movementType} onClose={() => setActiveShiftModal(null)} onSubmit={handleRecordShiftMovement} />}
+      {isCustomerSearchModalOpen && <CustomerSearchModal customers={customers} onClose={() => setCustomerSearchModalOpen(false)} onSelect={(customer) => { setSelectedCustomer(customer); setCustomerSearchModalOpen(false); }} />}
+      {isDiscountModalOpen && discountTarget && <DiscountModal target={discountTarget} onClose={() => setDiscountModalOpen(false)} onSubmit={handleApplyDiscount} />}
+      {isLoyaltyModalOpen && selectedCustomer && <LoyaltyRedemptionModal customer={selectedCustomer} cartTotal={total + loyaltyDiscountAmount} onClose={() => setLoyaltyModalOpen(false)} onSubmit={handleApplyLoyaltyPoints} />}
+      {isPaymentModalOpen && <PaymentModal total={total} onFinalize={handleFinalizeSale} onCancel={() => setPaymentModalOpen(false)} selectedCustomer={selectedCustomer} />}
+      {isHomologationPanelOpen && <HomologationPanel onClose={() => setHomologationPanelOpen(false)} />}
       {currentView === 'pdv' && <ShortcutHelper />}
     </div>
   );

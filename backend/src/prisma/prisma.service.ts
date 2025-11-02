@@ -1,11 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+// FIX: Use a named import for PrismaClient for proper type resolution and inheritance.
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
+// FIX: Extend from the correctly imported PrismaClient to inherit its methods and properties.
 export class PrismaService extends PrismaClient implements OnModuleInit {
-  // FIX: Added constructor to properly initialize the extended PrismaClient.
-  // The 'super()' call is essential for the subclass to inherit methods
-  // like '$connect' and model properties like 'user'.
+  // FIX: A constructor with super() is necessary when extending a class.
   constructor() {
     super();
   }

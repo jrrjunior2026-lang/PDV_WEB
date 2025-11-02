@@ -98,7 +98,7 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ products, onAdd, 
           Adicionar Novo Produto
         </button>
       </div>
-      <div className="bg-brand-secondary rounded-lg border border-brand-border overflow-hidden">
+      <div className="bg-brand-secondary rounded-lg border border-brand-border overflow-x-auto">
         <table className="min-w-full divide-y divide-brand-border">
           <thead className="bg-brand-border/50">
             <tr>

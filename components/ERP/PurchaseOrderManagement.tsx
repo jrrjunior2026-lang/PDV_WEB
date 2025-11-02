@@ -8,7 +8,6 @@ interface PurchaseOrderManagementProps {
   suppliers: Supplier[];
   products: Product[];
   onAdd: (order: Omit<PurchaseOrder, 'id' | 'status' | 'createdAt'>) => Promise<void>;
-  // FIX: The status update function should only accept the valid target statuses.
   onUpdateStatus: (orderId: string, status: 'Recebido' | 'Cancelado') => Promise<void>;
 }
 

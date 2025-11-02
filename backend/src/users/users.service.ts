@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { User } from '@prisma/client';
+// FIX: Use a named import for the User model type from the generated Prisma Client.
+import type { User } from '@prisma/client';
 
 @Injectable()
 export class UsersService {

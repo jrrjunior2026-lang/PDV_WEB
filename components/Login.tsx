@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import apiClient from '../services/apiClient';
 import type { User } from '../types';
-import * as tokenService from '../services/tokenService';
 
 interface LoginProps {
     onLogin: (user: User) => void;
 }
+
+const MOCK_USERS_WITH_PASSWORDS = [
+    { id: 'user-1', name: 'Admin User', email: 'admin@pdv.com', password: '123456', role: 'Admin', status: 'Active' },
+    { id: 'user-2', name: 'Gerente User', email: 'gerente@pdv.com', password: '123456', role: 'Gerente', status: 'Active' },
+    { id: 'user-3', name: 'Caixa User', email: 'caixa@pdv.com', password: '123456', role: 'Caixa', status: 'Active' },
+];
 
 const Spinner = () => (
     <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24">
@@ -14,51 +18,12 @@ const Spinner = () => (
     </svg>
 );
 
-const LOGIN_ATTEMPTS_KEY = 'pdv-login-attempts';
-const MAX_LOGIN_ATTEMPTS = 3;
-const LOCKOUT_DURATION_SECONDS = 60;
-
-interface LoginAttemptInfo {
-    count: number;
-    lockoutUntil: number | null; // Store as timestamp
-}
-
-const getLoginAttempts = (): Record<string, LoginAttemptInfo> => {
-    try {
-        const attempts = localStorage.getItem(LOGIN_ATTEMPTS_KEY);
-        return attempts ? JSON.parse(attempts) : {};
-    } catch {
-        return {};
-    }
-};
-
-const recordFailedAttempt = (email: string) => {
-    const attempts = getLoginAttempts();
-    const currentAttempt = attempts[email] || { count: 0, lockoutUntil: null };
-    currentAttempt.count += 1;
-    if (currentAttempt.count >= MAX_LOGIN_ATTEMPTS) {
-        currentAttempt.lockoutUntil = Date.now() + LOCKOUT_DURATION_SECONDS * 1000;
-    }
-    attempts[email] = currentAttempt;
-    localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
-};
-
-const clearLoginAttempts = (email: string) => {
-    const attempts = getLoginAttempts();
-    if (attempts[email]) {
-        delete attempts[email];
-        localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
-    }
-};
-
-
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
     const [loginError, setLoginError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState<number | null>(null);
 
     const validate = useCallback(() => {
         const errors: { email?: string; password?: string } = {};
@@ -69,8 +34,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
         if (!password) {
             errors.password = 'A senha é obrigatória.';
-        } else if (password.length < 6) {
-            errors.password = 'A senha deve ter no mínimo 6 caracteres.';
         }
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
@@ -80,58 +43,27 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         validate();
     }, [email, password, validate]);
 
-    useEffect(() => {
-        let timer: ReturnType<typeof setTimeout>;
-        if (lockoutTimeRemaining !== null && lockoutTimeRemaining > 0) {
-            timer = setTimeout(() => {
-                setLockoutTimeRemaining(lockoutTimeRemaining - 1);
-            }, 1000);
-        } else if (lockoutTimeRemaining === 0) {
-            setLockoutTimeRemaining(null);
-            setLoginError(null);
-            clearLoginAttempts(email.toLowerCase());
-        }
-        return () => clearTimeout(timer);
-    }, [lockoutTimeRemaining, email]);
-
-    const checkLockout = useCallback(() => {
-        const attempts = getLoginAttempts();
-        const info = attempts[email.toLowerCase()];
-        if (info?.lockoutUntil && info.lockoutUntil > Date.now()) {
-            const remaining = Math.ceil((info.lockoutUntil - Date.now()) / 1000);
-            setLockoutTimeRemaining(remaining);
-            setLoginError(`Muitas tentativas falhas. Tente novamente em ${remaining} segundos.`);
-            return true;
-        }
-        return false;
-    }, [email]);
-
-    useEffect(() => {
-        if(email) checkLockout();
-    }, [email, checkLockout]);
-
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoginError(null);
 
         if (!validate()) return;
-        if (checkLockout()) return;
 
         setIsLoading(true);
-        try {
-            const { user, token } = await apiClient.post<{ user: User; token: string }>('/auth/login', { email, password });
-            clearLoginAttempts(email.toLowerCase());
-            tokenService.saveToken(token);
-            onLogin(user);
-        } catch (error) {
-            recordFailedAttempt(email.toLowerCase());
-            const errorMessage = (error as any)?.response?.data?.message || 'Credenciais inválidas ou usuário inativo.';
-            setLoginError(errorMessage);
-            checkLockout();
-        } finally {
+        // Simulate network delay
+        setTimeout(() => {
+            const foundUser = MOCK_USERS_WITH_PASSWORDS.find(
+                u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+            );
+
+            if (foundUser && foundUser.status === 'Active') {
+                const { password, ...userToLogin } = foundUser;
+                onLogin(userToLogin as User);
+            } else {
+                setLoginError('Credenciais inválidas ou usuário inativo.');
+            }
             setIsLoading(false);
-        }
+        }, 500);
     };
 
     const isFormValid = Object.keys(formErrors).length === 0;
@@ -190,7 +122,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <div>
                         <button
                             type="submit"
-                            disabled={isLoading || !isFormValid || lockoutTimeRemaining !== null}
+                            disabled={isLoading || !isFormValid}
                             className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-brand-accent hover:bg-brand-accent/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-accent disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading ? <Spinner /> : 'Entrar'}
